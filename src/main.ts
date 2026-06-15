@@ -92,12 +92,11 @@ export default class ChatBubblePlugin extends Plugin {
 	onunload() { this.closeBubbles(); }
 
 	resolveMediaLinks(content: string, sourceFile: TFile): string {
-		const parentPath = sourceFile.parent?.path || '';
-		return content.replace(/!\[\[(.+?)\]\]/g, (_full: string, filename: string) => {
-			const vaultPath = parentPath ? `${parentPath}/${filename}` : filename;
-			const mediaFile = this.app.vault.getAbstractFileByPath(vaultPath);
-			if (mediaFile instanceof TFile) {
-				return `![[RESOLVED:${this.app.vault.getResourcePath(mediaFile)}]]`;
+		return content.replace(/!\[\[(.+?)\]\]/g, (_full: string, linktext: string) => {
+			// Use Obsidian's native link resolution (searches whole vault)
+			const resolved = this.app.metadataCache.getFirstLinkpathDest(linktext, sourceFile.path);
+			if (resolved instanceof TFile) {
+				return `![[RESOLVED:${this.app.vault.getResourcePath(resolved)}]]`;
 			}
 			return _full;
 		});
