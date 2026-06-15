@@ -96,7 +96,27 @@
   font-family: var(--font-monospace);
 }
 
-/* ── 图片消息 ── */
+/* ── 裸媒体（无气泡包裹的图片/音频/视频） ── */
+.chat-bare-img {
+  max-width: 200px;
+  max-height: 200px;
+  border-radius: 8px;
+  display: block;
+  object-fit: cover;
+}
+
+.chat-bare-audio {
+  max-width: 260px;
+  height: 32px;
+}
+
+.chat-bare-video {
+  max-width: 280px;
+  max-height: 200px;
+  border-radius: 8px;
+}
+
+/* ── 气泡内媒体（有文字混排时） ── */
 .chat-msg .chat-img {
   margin-top: 4px;
 }

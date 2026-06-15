@@ -1,6 +1,7 @@
 /**
  * Chat View - 气泡对话框渲染器
  * 将解析后的聊天消息渲染为微信风格气泡 UI
+ * 媒体文件（图片/音频/视频）不套气泡，直接渲染
  */
 
 import { parseChatLog, ChatMessage, QuoteReply, MergeForward } from './chat-parser';
@@ -22,11 +23,32 @@ export function renderChatLog(markdown: string): string {
 		for (const msg of messages) {
 			const isSelf = isSelfMessage(msg.name);
 			const side = isSelf ? 'self' : 'other';
-			const bodyHtml = renderMessageBody(msg);
+
+			// Split parts: text → bubble, media → bare
+			let textHtml = '';
+			let mediaHtml = '';
+
+			for (const part of msg.body) {
+				if (typeof part === 'string') {
+					const rendered = renderPlainText(part);
+					if (isMediaOnly(part)) {
+						mediaHtml += rendered;
+					} else if (rendered.trim()) {
+						textHtml += rendered + NL;
+					}
+				} else if (part.type === 'quote-reply') {
+					textHtml += renderQuoteReply(part);
+				} else if (part.type === 'merge-forward') {
+					textHtml += renderMergeForward(part);
+				}
+			}
 
 			html += `<div class="chat-msg ${side}">`;
 			html += `<div class="chat-meta">${escapeHtml(msg.name)} · ${msg.time}</div>`;
-			html += `<div class="chat-bubble">${bodyHtml}</div>`;
+			if (textHtml) {
+				html += `<div class="chat-bubble">${textHtml}</div>`;
+			}
+			html += mediaHtml;
 			html += '</div>';
 		}
 
@@ -36,23 +58,16 @@ export function renderChatLog(markdown: string): string {
 	return html;
 }
 
+/** Returns true if the text is purely a media reference (no surrounding text) */
+function isMediaOnly(text: string): boolean {
+	const trimmed = text.trim();
+	const mediaExts = /\.(png|jpe?g|gif|webp|bmp|svg|mp3|m4a|wav|ogg|aac|mp4|webm|mov|emoj)\b/i;
+	return /^!\[\[.+?\]\]$/.test(trimmed) && mediaExts.test(trimmed);
+}
+
 function isSelfMessage(name: string): boolean {
 	const selfNames = ['自己', '我', 'me'];
 	return selfNames.some(n => name.toLowerCase() === n.toLowerCase());
-}
-
-function renderMessageBody(msg: ChatMessage): string {
-	let html = '';
-	for (const part of msg.body) {
-		if (typeof part === 'string') {
-			html += renderPlainText(part) + NL;
-		} else if (part.type === 'quote-reply') {
-			html += renderQuoteReply(part);
-		} else if (part.type === 'merge-forward') {
-			html += renderMergeForward(part);
-		}
-	}
-	return html;
 }
 
 function renderPlainText(text: string): string {
@@ -61,30 +76,28 @@ function renderPlainText(text: string): string {
 	result = result.replace(/!\[\[(.+?)(?:\|(\d+))?\]\]/g, (_m, file: string, w: string) => {
 		file = file.trim();
 
-		// Pre-resolved Obsidian resource URI
 		if (file.startsWith('RESOLVED:')) {
 			const uri = file.slice(9);
 			const ext = uri.split('.').pop()?.toLowerCase() || '';
 			if (['mp3', 'm4a', 'wav', 'ogg', 'aac'].includes(ext)) {
-				return `<div class="chat-media"><audio controls src="${uri}" style="max-width:260px;height:32px;" onerror="this.style.display='none'"></audio></div>`;
+				return `<audio controls src="${uri}" class="chat-bare-audio" onerror="this.style.display='none'"></audio>`;
 			}
 			if (['mp4', 'webm', 'mov'].includes(ext)) {
-				return `<div class="chat-media"><video controls src="${uri}" style="max-width:280px;max-height:200px;" onerror="this.style.display='none'"></video></div>`;
+				return `<video controls src="${uri}" class="chat-bare-video" onerror="this.style.display='none'"></video>`;
 			}
 			const width = w ? ` width="${w}"` : '';
-			return `<div class="chat-img"><img src="${uri}"${width} loading="lazy" onerror="this.style.display='none'"></div>`;
+			return `<img src="${uri}" class="chat-bare-img"${width} loading="lazy" onerror="this.style.display='none'">`;
 		}
 
 		const ext = file.split('.').pop()?.toLowerCase() || '';
-
 		if (['mp3', 'm4a', 'wav', 'ogg', 'aac'].includes(ext)) {
-			return `<div class="chat-media"><audio controls src="${encodeURI(file)}" style="max-width:260px;height:32px;" onerror="this.style.display='none'"></audio></div>`;
+			return `<audio controls src="${encodeURI(file)}" class="chat-bare-audio" onerror="this.style.display='none'"></audio>`;
 		}
 		if (['mp4', 'webm', 'mov'].includes(ext)) {
-			return `<div class="chat-media"><video controls src="${encodeURI(file)}" style="max-width:280px;max-height:200px;" onerror="this.style.display='none'"></video></div>`;
+			return `<video controls src="${encodeURI(file)}" class="chat-bare-video" onerror="this.style.display='none'"></video>`;
 		}
 		const width = w ? ` width="${w}"` : '';
-		return `<div class="chat-img"><img src="${encodeURI(file)}"${width} loading="lazy" onerror="this.style.display='none'"></div>`;
+		return `<img src="${encodeURI(file)}" class="chat-bare-img"${width} loading="lazy" onerror="this.style.display='none'">`;
 	});
 
 	return result;
