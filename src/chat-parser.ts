@@ -20,6 +20,8 @@
  *   消息内容
  */
 
+const NL = String.fromCharCode(10); // newline — avoids esbuild CRLF mangling
+
 export interface ChatMessage {
 	name: string;
 	time: string;
@@ -52,7 +54,7 @@ const MERGE_FORWARD_RE = /^\[合并转发\|(.+?)\]/;
 const INDENT_CONTENT_RE = /^\s{2,}(.+)/;
 
 export function parseChatLog(markdown: string): ParseResult {
-	const lines = markdown.split('\n');
+	const lines = markdown.split(/\r?\n/);
 	const preamble: string[] = [];
 	const messages: ChatMessage[] = [];
 	let currentMsg: ChatMessage | null = null;
@@ -128,7 +130,7 @@ export function parseChatLog(markdown: string): ParseResult {
 					if (nl.startsWith('> ')) {
 						const contentMatch = nl.match(QUOTE_CONTENT_RE);
 						if (contentMatch) {
-							if (quoteContent) quoteContent += '\n';
+							if (quoteContent) quoteContent += NL;
 							quoteContent += contentMatch[1];
 						}
 						j++;
@@ -140,7 +142,7 @@ export function parseChatLog(markdown: string): ParseResult {
 				while (j < lines.length) {
 					const nl = lines[j].trim();
 					if (!nl || HEADER_RE.test(nl)) break;
-					if (replyContent) replyContent += '\n';
+					if (replyContent) replyContent += NL;
 					replyContent += nl;
 					j++;
 				}
@@ -161,6 +163,6 @@ export function parseChatLog(markdown: string): ParseResult {
 	}
 	if (currentMsg) messages.push(currentMsg);
 
-	const preambleText = preamble.join('\n').trim();
+	const preambleText = preamble.join(NL).trim();
 	return { preamble: preambleText, messages };
 }

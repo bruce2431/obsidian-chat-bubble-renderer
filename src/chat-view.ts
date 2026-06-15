@@ -5,6 +5,8 @@
 
 import { parseChatLog, ChatMessage, QuoteReply, MergeForward } from './chat-parser';
 
+const NL = String.fromCharCode(10);
+
 export function renderChatLog(markdown: string): string {
 	const { preamble, messages } = parseChatLog(markdown);
 
@@ -43,7 +45,7 @@ function renderMessageBody(msg: ChatMessage): string {
 	let html = '';
 	for (const part of msg.body) {
 		if (typeof part === 'string') {
-			html += renderPlainText(part) + '\n';
+			html += renderPlainText(part) + NL;
 		} else if (part.type === 'quote-reply') {
 			html += renderQuoteReply(part);
 		} else if (part.type === 'merge-forward') {
