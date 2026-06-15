@@ -35,7 +35,7 @@ export function renderChatLog(markdown: string): string {
 }
 
 function isSelfMessage(name: string): boolean {
-	const selfNames = ['bruceMTY', '我', 'me', '自己'];
+	const selfNames = ['自己', '我', 'me'];
 	return selfNames.some(n => name.toLowerCase() === n.toLowerCase());
 }
 
@@ -56,7 +56,6 @@ function renderMessageBody(msg: ChatMessage): string {
 function renderPlainText(text: string): string {
 	let result = escapeHtml(text);
 
-	// Obsidian 内部链接 ![[文件名.ext|宽度]] → <img> / <audio> / <video>
 	result = result.replace(/!\[\[(.+?)(?:\|(\d+))?\]\]/g, (_m, file: string, w: string) => {
 		file = file.trim();
 		const ext = file.split('.').pop()?.toLowerCase() || '';
