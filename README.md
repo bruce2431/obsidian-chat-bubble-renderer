@@ -125,3 +125,6 @@ npm run lint      # ESLint 检查
 [2026-06-15-17:30]: 自适应界面：全屏铺满，气泡居中 max-width:800px，底部留白 80px
 [2026-06-15-17:30]: 退出机制：右上角 ✕ 按钮 + Ctrl+P「退出聊天气泡」命令 + onunload 自动清理
 [2026-06-15-17:35]: 重构：零触碰 Obsidian DOM（不隐藏 sizer），纯 fixed overlay 挂在 document.body，z-index:100；Obsidian 底部任意重绘不影响气泡；Esc 键退出
+[2026-06-15-17:40]: docs: README 示例去真实姓名，用「自己」「对方」替代；push to GitHub
+[2026-06-15-17:45]: fix: esbuild CRLF 破坏 '\\n' — 全改用 String.fromCharCode(10) / split(/\\r?\\n/)
+[2026-06-15-17:50]: fix: ![[媒体文件]] 通过 vault.getResourcePath 转为 Obsidian app:// URI 加载
