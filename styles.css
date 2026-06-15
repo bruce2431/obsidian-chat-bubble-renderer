@@ -33,10 +33,12 @@
 
 .chat-msg.other {
   align-self: flex-start;
+  align-items: flex-start;
 }
 
 .chat-msg.self {
   align-self: flex-end;
+  align-items: flex-end;
 }
 
 /* ── 消息元信息（发送者 + 时间） ── */
@@ -61,6 +63,8 @@
   color: var(--text-normal);
   word-break: break-word;
   position: relative;
+  width: fit-content;
+  max-width: 100%;
 }
 
 /* 对方气泡（左） */
