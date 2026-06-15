@@ -50,6 +50,7 @@ export function renderChatLog(markdown: string): string {
 
 			for (const part of msg.body) {
 				if (typeof part === 'string') {
+					if (!part.trim()) continue;
 					const rendered = renderPlainText(part);
 					if (isMediaOnly(part)) {
 						mediaHtml += rendered;
@@ -112,7 +113,7 @@ function isMediaOnly(text: string): boolean {
 	// RESOLVED: prefix = already handled audio/video/image (base64 or app://)
 	if (trimmed.includes('RESOLVED:')) return true;
 	// Fallback: filename with known media extension
-	const mediaExts = /\.(png|jpe?g|gif|webp|bmp|svg|mp3|m4a|wav|ogg|aac|mp4|webm|mov|emoj)\b/i;
+	const mediaExts = /\.(png|jpe?g|gif|webp|bmp|svg|mp3|m4a|wav|ogg|aac|amr|silk|mp4|webm|mov|emoj)\b/i;
 	return mediaExts.test(trimmed);
 }
 

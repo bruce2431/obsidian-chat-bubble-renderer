@@ -135,3 +135,5 @@ npm run deploy    # 构建 + 复制到 vault
 [2026-06-15-18:15]: fix: isMediaOnly 识别 RESOLVED: 前缀（base64 无扩展名，不匹配 .mp3/.mp4）
 |[2026-06-15-18:20]: fix: data URI 检测改用 MIME 前缀 data:audio/|data:video/|data:image/（split('.') 在 base64 URI 上失效）
 |[2026-06-15-22:00]: feat: 系统消息（撤回/拍一拍/进群等）居中浅灰渲染，不套气泡；混入普通消息时用 .chat-system-inline 淡化处理
+|[2026-06-15-20:10]: fix: HEADER_RE .+? → .*? 支持 [] 空发送者（系统消息如撤回），空发送者识别为系统消息独立渲染
+|[2026-06-15-20:20]: fix: 短文本气泡自适应宽度（fit-content），不再拉伸占满

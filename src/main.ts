@@ -63,16 +63,16 @@ export default class ChatBubblePlugin extends Plugin {
 
 		this.closeBubbles();
 
-		const overlay = document.body.createDiv('chat-bubble-overlay');
+		const overlay = view.containerEl.createDiv('chat-bubble-overlay');
 		overlay.style.cssText =
-			'position:fixed;top:0;left:0;right:0;bottom:0;z-index:100;' +
+			'position:absolute;top:0;left:0;right:0;bottom:0;z-index:100;' +
 			'overflow-y:auto;box-sizing:border-box;' +
 			'background:var(--background-primary);';
 
 		const closeBtn = overlay.createDiv('chat-bubble-close');
 		closeBtn.innerHTML = '\u2715';
 		closeBtn.style.cssText =
-			'position:fixed;top:16px;right:20px;z-index:101;' +
+			'position:absolute;top:16px;right:20px;z-index:101;' +
 			'font-size:22px;color:var(--text-muted);cursor:pointer;' +
 			'width:36px;height:36px;display:flex;align-items:center;justify-content:center;' +
 			'border-radius:50%;transition:background .15s;';

@@ -112,7 +112,6 @@
 .chat-bare-audio {
   display: block;
   max-width: 260px;
-  height: 32px;
 }
 
 .chat-bare-video {
@@ -256,6 +255,11 @@
 .chat-msg.system {
   align-self: center;
   max-width: 90%;
+}
+
+/* ── 纯媒体消息：无 meta 间距 ── */
+.chat-msg.chat-media-only .chat-meta {
+  display: none;
 }
 
 .chat-system-tip {
