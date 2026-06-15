@@ -61,8 +61,12 @@ export function renderChatLog(markdown: string): string {
 /** Returns true if the text is purely a media reference (no surrounding text) */
 function isMediaOnly(text: string): boolean {
 	const trimmed = text.trim();
+	if (!/^!\[\[.+?\]\]$/.test(trimmed)) return false;
+	// RESOLVED: prefix = already handled audio/video/image (base64 or app://)
+	if (trimmed.includes('RESOLVED:')) return true;
+	// Fallback: filename with known media extension
 	const mediaExts = /\.(png|jpe?g|gif|webp|bmp|svg|mp3|m4a|wav|ogg|aac|mp4|webm|mov|emoj)\b/i;
-	return /^!\[\[.+?\]\]$/.test(trimmed) && mediaExts.test(trimmed);
+	return mediaExts.test(trimmed);
 }
 
 function isSelfMessage(name: string): boolean {
