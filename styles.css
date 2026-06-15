@@ -106,11 +106,13 @@
 }
 
 .chat-bare-audio {
+  display: block;
   max-width: 260px;
   height: 32px;
 }
 
 .chat-bare-video {
+  display: block;
   max-width: 280px;
   max-height: 200px;
   border-radius: 8px;

@@ -82,6 +82,11 @@ export default class ChatBubblePlugin extends Plugin {
 		contentEl.innerHTML = chatHtml;
 		contentEl.style.cssText = 'max-width:800px;margin:0 auto;padding:40px 20px 80px;';
 
+		// Force-load audio/video elements (innerHTML doesn't trigger load)
+		contentEl.querySelectorAll('audio, video').forEach(el => {
+			(el as HTMLMediaElement).load();
+		});
+
 		new Notice('聊天气泡已开启 | Esc 关闭');
 	}
 

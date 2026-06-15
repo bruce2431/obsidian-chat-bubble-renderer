@@ -80,10 +80,10 @@ function renderPlainText(text: string): string {
 			const uri = file.slice(9);
 			const ext = uri.split('.').pop()?.toLowerCase() || '';
 			if (['mp3', 'm4a', 'wav', 'ogg', 'aac'].includes(ext)) {
-				return `<audio controls src="${uri}" class="chat-bare-audio" onerror="this.style.display='none'"></audio>`;
+				return `<audio controls preload="auto" src="${uri}" class="chat-bare-audio" onerror="this.style.display='none'"></audio>`;
 			}
 			if (['mp4', 'webm', 'mov'].includes(ext)) {
-				return `<video controls src="${uri}" class="chat-bare-video" onerror="this.style.display='none'"></video>`;
+				return `<video controls preload="auto" src="${uri}" class="chat-bare-video" onerror="this.style.display='none'"></video>`;
 			}
 			const width = w ? ` width="${w}"` : '';
 			return `<img src="${uri}" class="chat-bare-img"${width} loading="lazy" onerror="this.style.display='none'">`;
@@ -91,10 +91,10 @@ function renderPlainText(text: string): string {
 
 		const ext = file.split('.').pop()?.toLowerCase() || '';
 		if (['mp3', 'm4a', 'wav', 'ogg', 'aac'].includes(ext)) {
-			return `<audio controls src="${encodeURI(file)}" class="chat-bare-audio" onerror="this.style.display='none'"></audio>`;
+			return `<audio controls preload="auto" src="${encodeURI(file)}" class="chat-bare-audio" onerror="this.style.display='none'"></audio>`;
 		}
 		if (['mp4', 'webm', 'mov'].includes(ext)) {
-			return `<video controls src="${encodeURI(file)}" class="chat-bare-video" onerror="this.style.display='none'"></video>`;
+			return `<video controls preload="auto" src="${encodeURI(file)}" class="chat-bare-video" onerror="this.style.display='none'"></video>`;
 		}
 		const width = w ? ` width="${w}"` : '';
 		return `<img src="${encodeURI(file)}" class="chat-bare-img"${width} loading="lazy" onerror="this.style.display='none'">`;
