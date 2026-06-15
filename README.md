@@ -128,3 +128,5 @@ npm run lint      # ESLint 检查
 [2026-06-15-17:40]: docs: README 示例去真实姓名，用「自己」「对方」替代；push to GitHub
 [2026-06-15-17:45]: fix: esbuild CRLF 破坏 '\\n' — 全改用 String.fromCharCode(10) / split(/\\r?\\n/)
 [2026-06-15-17:50]: fix: ![[媒体文件]] 通过 vault.getResourcePath 转为 Obsidian app:// URI 加载
+[2026-06-15-17:55]: fix: 媒体全 vault 文件名 map 搜索（getFirstLinkpathDest 对 .mp3/.mp4 跨目录解析不全）
+[2026-06-15-18:00]: refactor: 纯媒体消息不套气泡直接渲染，max-width 200px（图）/260px（音频）/280px（视频）
