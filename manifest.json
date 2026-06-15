@@ -1,0 +1,10 @@
+{
+	"id": "chat-bubble-renderer",
+	"name": "Chat Bubble Renderer",
+	"version": "1.0.0",
+	"minAppVersion": "1.0.0",
+	"description": "将带有 #聊天记录 标签的 Markdown 文件自动渲染为微信风格气泡对话框",
+	"author": "bruceMTY",
+	"authorUrl": "",
+	"isDesktopOnly": false
+}

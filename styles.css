@@ -1,0 +1,227 @@
+/*
+ * Chat Bubble Renderer - 微信风格气泡对话框样式
+ * 
+ * 适用于 Obsidian 中带有 #聊天记录 标签的 Markdown 文件
+ */
+
+/* ── 容器 ── */
+.chat-bubble-container {
+  padding: 16px 0;
+}
+
+/* ── 前言（标签/注释） ── */
+.chat-preamble {
+  margin-bottom: 16px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-muted);
+}
+
+/* ── 消息列表容器 ── */
+.chat-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ── 单条消息 ── */
+.chat-msg {
+  display: flex;
+  flex-direction: column;
+  max-width: 85%;
+}
+
+.chat-msg.other {
+  align-self: flex-start;
+}
+
+.chat-msg.self {
+  align-self: flex-end;
+}
+
+/* ── 消息元信息（发送者 + 时间） ── */
+.chat-msg .chat-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 3px;
+  padding: 0 12px;
+  font-weight: 500;
+}
+
+.chat-msg.self .chat-meta {
+  text-align: right;
+}
+
+/* ── 气泡本体 ── */
+.chat-msg .chat-bubble {
+  padding: 8px 14px;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--text-normal);
+  word-break: break-word;
+  position: relative;
+}
+
+/* 对方气泡（左） */
+.chat-msg.other .chat-bubble {
+  background: #f2f3f5;
+  border-bottom-left-radius: 4px;
+}
+
+/* 自己气泡（右） */
+.chat-msg.self .chat-bubble {
+  background: #95ec69;
+  border-bottom-right-radius: 4px;
+  color: #000;
+}
+
+/* ── 气泡内元素 ── */
+.chat-msg .chat-bubble p {
+  margin: 2px 0;
+}
+
+.chat-msg .chat-bubble img {
+  max-width: 120px;
+  max-height: 120px;
+  border-radius: 6px;
+  vertical-align: middle;
+}
+
+.chat-msg .chat-bubble code {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: var(--font-monospace);
+}
+
+/* ── 图片消息 ── */
+.chat-msg .chat-img {
+  margin-top: 4px;
+}
+
+.chat-msg .chat-img img {
+  max-width: 200px;
+  max-height: 200px;
+  border-radius: 8px;
+  display: block;
+  object-fit: cover;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.chat-msg .chat-img img:hover {
+  transform: scale(1.03);
+}
+
+/* ── 媒体消息（音频/视频） ── */
+.chat-msg .chat-media {
+  margin-top: 4px;
+}
+
+.chat-msg .chat-media audio,
+.chat-msg .chat-media video {
+  border-radius: 8px;
+  max-width: 100%;
+}
+
+/* ── 引用回复（微信风格灰色引用条） ── */
+.chat-quote-bar {
+  margin-top: 4px;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border-left: 3px solid var(--text-muted);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.chat-msg.self .chat-quote-bar {
+  background: rgba(0, 0, 0, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+  border-left-color: rgba(255, 255, 255, 0.4);
+}
+
+/* ── 合并转发卡片 ── */
+.chat-forward-card {
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.chat-forward-card:hover {
+  background: var(--background-secondary);
+}
+
+.chat-forward-card .forward-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--text-normal);
+}
+
+.chat-forward-card .forward-item {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 3px 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+  line-height: 1.5;
+}
+
+.chat-forward-card .forward-item:last-child {
+  border-bottom: none;
+}
+
+.chat-forward-card .forward-more {
+  font-size: 11px;
+  color: var(--text-accent);
+  padding: 4px 0;
+  text-align: center;
+}
+
+.chat-forward-card .forward-expand {
+  font-size: 12px;
+  color: var(--text-accent);
+  padding: 6px 0 2px;
+  text-align: center;
+  cursor: pointer;
+  border-top: 1px solid var(--background-modifier-border);
+  margin-top: 6px;
+  transition: opacity 0.15s;
+}
+
+.chat-forward-card .forward-expand:hover {
+  opacity: 0.8;
+}
+
+.chat-forward-card .forward-full {
+  display: none;
+  margin-top: 8px;
+  border-top: 1px solid var(--background-modifier-border);
+  padding-top: 8px;
+}
+
+.chat-forward-card .forward-full.open {
+  display: block;
+}
+
+.forward-footer {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 4px 0 2px;
+  opacity: 0.6;
+}
+
+/* ── 通配适配：在阅读视图中禁用默认 Markdown 渲染 ── */
+.chat-bubble-container h1,
+.chat-bubble-container h2,
+.chat-bubble-container h3,
+.chat-bubble-container h4 {
+  display: none;
+}
