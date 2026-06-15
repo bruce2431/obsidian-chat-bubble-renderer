@@ -82,13 +82,14 @@ function renderPlainText(text: string): string {
 
 		if (file.startsWith('RESOLVED:')) {
 			const uri = file.slice(9);
-			const ext = uri.split('.').pop()?.toLowerCase() || '';
-			if (['mp3', 'm4a', 'wav', 'ogg', 'aac'].includes(ext)) {
+			// data URI: check MIME type (no file extension)
+			if (uri.startsWith('data:audio/')) {
 				return `<audio controls preload="auto" src="${uri}" class="chat-bare-audio" onerror="this.style.display='none'"></audio>`;
 			}
-			if (['mp4', 'webm', 'mov'].includes(ext)) {
+			if (uri.startsWith('data:video/')) {
 				return `<video controls preload="auto" src="${uri}" class="chat-bare-video" onerror="this.style.display='none'"></video>`;
 			}
+			// app:// URI or data:image: render as image
 			const width = w ? ` width="${w}"` : '';
 			return `<img src="${uri}" class="chat-bare-img"${width} loading="lazy" onerror="this.style.display='none'">`;
 		}
