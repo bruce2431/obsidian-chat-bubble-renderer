@@ -92,8 +92,21 @@ export default class ChatBubblePlugin extends Plugin {
 	onunload() { this.closeBubbles(); }
 
 	resolveMediaLinks(content: string, sourceFile: TFile): string {
+		// Build a filename→TFile map once (expensive, do once per render)
+		const allFiles = this.app.vault.getFiles();
+		const nameMap = new Map<string, TFile>();
+		for (const f of allFiles) {
+			// Map by basename (with ext) for ![[file.mp3]] style links
+			nameMap.set(f.name, f);
+		}
+
 		return content.replace(/!\[\[(.+?)\]\]/g, (_full: string, linktext: string) => {
-			// Use Obsidian's native link resolution (searches whole vault)
+			// Try direct filename match first (handles media/ subdirs)
+			const match = nameMap.get(linktext);
+			if (match) {
+				return `![[RESOLVED:${this.app.vault.getResourcePath(match)}]]`;
+			}
+			// Fallback: Obsidian's native resolution
 			const resolved = this.app.metadataCache.getFirstLinkpathDest(linktext, sourceFile.path);
 			if (resolved instanceof TFile) {
 				return `![[RESOLVED:${this.app.vault.getResourcePath(resolved)}]]`;
