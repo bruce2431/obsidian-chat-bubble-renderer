@@ -60,6 +60,21 @@ function renderPlainText(text: string): string {
 
 	result = result.replace(/!\[\[(.+?)(?:\|(\d+))?\]\]/g, (_m, file: string, w: string) => {
 		file = file.trim();
+
+		// Pre-resolved Obsidian resource URI
+		if (file.startsWith('RESOLVED:')) {
+			const uri = file.slice(9);
+			const ext = uri.split('.').pop()?.toLowerCase() || '';
+			if (['mp3', 'm4a', 'wav', 'ogg', 'aac'].includes(ext)) {
+				return `<div class="chat-media"><audio controls src="${uri}" style="max-width:260px;height:32px;" onerror="this.style.display='none'"></audio></div>`;
+			}
+			if (['mp4', 'webm', 'mov'].includes(ext)) {
+				return `<div class="chat-media"><video controls src="${uri}" style="max-width:280px;max-height:200px;" onerror="this.style.display='none'"></video></div>`;
+			}
+			const width = w ? ` width="${w}"` : '';
+			return `<div class="chat-img"><img src="${uri}"${width} loading="lazy" onerror="this.style.display='none'"></div>`;
+		}
+
 		const ext = file.split('.').pop()?.toLowerCase() || '';
 
 		if (['mp3', 'm4a', 'wav', 'ogg', 'aac'].includes(ext)) {
