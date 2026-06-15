@@ -46,7 +46,7 @@ export interface ParseResult {
 	messages: ChatMessage[];
 }
 
-const HEADER_RE = /^\[(.+?)\]\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/;
+const HEADER_RE = /^\[(.*?)\]\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/;
 const QUOTE_REPLY_RE = /^>\s+(.+?)\(wxid_[^)]+\)\s+\d{2}-\d{2}\s+\d{2}:\d{2}(?::\d{2})?\s*$/;
 const QUOTE_CONTENT_RE = /^>\s+(.+)/;
 const QUOTE_REF_RE = /^>\s*>\s*\[引用\]/;

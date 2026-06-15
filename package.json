@@ -7,6 +7,7 @@
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
 		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+		"deploy": "npm run build && cp main.js \"C:/Users/Ma2431/Desktop/@WrokSpace/[2026-06-15-16-07-02]-李京瑾完整导出/.obsidian/plugins/chat-bubble-renderer/main.js\" && cp styles.css \"C:/Users/Ma2431/Desktop/@WrokSpace/[2026-06-15-16-07-02]-李京瑾完整导出/.obsidian/plugins/chat-bubble-renderer/styles.css\" && cp manifest.json \"C:/Users/Ma2431/Desktop/@WrokSpace/[2026-06-15-16-07-02]-李京瑾完整导出/.obsidian/plugins/chat-bubble-renderer/manifest.json\"",
 		"version": "node version-bump.mjs && git add manifest.json versions.json",
 		"lint": "eslint ."
 	},

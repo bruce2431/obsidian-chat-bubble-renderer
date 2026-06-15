@@ -104,6 +104,7 @@ npm install       # 安装依赖
 npm run dev       # 开发模式（watch）
 npm run build     # 构建生产版本
 npm run lint      # ESLint 检查
+npm run deploy    # 构建 + 复制到 vault
 ```
 
 # LOG
@@ -130,3 +131,7 @@ npm run lint      # ESLint 检查
 [2026-06-15-17:50]: fix: ![[媒体文件]] 通过 vault.getResourcePath 转为 Obsidian app:// URI 加载
 [2026-06-15-17:55]: fix: 媒体全 vault 文件名 map 搜索（getFirstLinkpathDest 对 .mp3/.mp4 跨目录解析不全）
 [2026-06-15-18:00]: refactor: 纯媒体消息不套气泡直接渲染，max-width 200px（图）/260px（音频）/280px（视频）
+[2026-06-15-18:10]: fix: audio/video 文件读为 base64 data URI（绕过 app:// 协议限制）
+[2026-06-15-18:15]: fix: isMediaOnly 识别 RESOLVED: 前缀（base64 无扩展名，不匹配 .mp3/.mp4）
+|[2026-06-15-18:20]: fix: data URI 检测改用 MIME 前缀 data:audio/|data:video/|data:image/（split('.') 在 base64 URI 上失效）
+|[2026-06-15-22:00]: feat: 系统消息（撤回/拍一拍/进群等）居中浅灰渲染，不套气泡；混入普通消息时用 .chat-system-inline 淡化处理

@@ -8,6 +8,24 @@ import { parseChatLog, ChatMessage, QuoteReply, MergeForward } from './chat-pars
 
 const NL = String.fromCharCode(10);
 
+/** 系统消息关键词列表 — 匹配则渲染为居中浅灰系统提示 */
+const SYSTEM_MSG_KEYWORDS = [
+	'撤回了一条消息',
+	'拍了拍',
+	'加入了群聊',
+	'移出了群聊',
+	'修改群名为',
+	'被管理员',
+	'已成为新群主',
+	'开启了朋友验证',
+	'已经通过你的朋友验证',
+];
+
+function isSystemMessage(text: string): boolean {
+	const trimmed = text.trim();
+	return SYSTEM_MSG_KEYWORDS.some(kw => trimmed.includes(kw));
+}
+
 export function renderChatLog(markdown: string): string {
 	const { preamble, messages } = parseChatLog(markdown);
 
@@ -24,7 +42,9 @@ export function renderChatLog(markdown: string): string {
 			const isSelf = isSelfMessage(msg.name);
 			const side = isSelf ? 'self' : 'other';
 
-			// Split parts: text → bubble, media → bare
+			// Check if ALL content is system messages
+			let isAllSystem = true;
+			let systemHtml = '';
 			let textHtml = '';
 			let mediaHtml = '';
 
@@ -33,18 +53,45 @@ export function renderChatLog(markdown: string): string {
 					const rendered = renderPlainText(part);
 					if (isMediaOnly(part)) {
 						mediaHtml += rendered;
-					} else if (rendered.trim()) {
+						isAllSystem = false;
+					} else if (isSystemMessage(part)) {
+						systemHtml += rendered + NL;
+						isAllSystem = isAllSystem && true;
+					} else {
 						textHtml += rendered + NL;
+						isAllSystem = false;
 					}
-				} else if (part.type === 'quote-reply') {
-					textHtml += renderQuoteReply(part);
-				} else if (part.type === 'merge-forward') {
-					textHtml += renderMergeForward(part);
+				} else {
+					// quote-reply or merge-forward — not system
+					if (part.type === 'quote-reply') {
+						textHtml += renderQuoteReply(part);
+					} else if (part.type === 'merge-forward') {
+						textHtml += renderMergeForward(part);
+					}
+					isAllSystem = false;
 				}
 			}
 
+			// System messages: empty-sender or all-body-is-system
+			const isSystemSender = !msg.name || msg.name.trim() === '';
+			if (isSystemSender || (isAllSystem && systemHtml)) {
+				// ── 系统消息：居中浅灰，无气泡，时间+内容 ──
+				let tipHtml = '';
+				tipHtml += `<span class="chat-system-time">${escapeHtml(msg.time)}</span>` + NL;
+				tipHtml += systemHtml || textHtml;
+				html += `<div class="chat-msg system">`;
+				html += `<div class="chat-system-tip">${tipHtml}</div>`;
+				html += '</div>';
+				continue;
+			}
+
+			// ── 普通消息 ──
 			html += `<div class="chat-msg ${side}">`;
 			html += `<div class="chat-meta">${escapeHtml(msg.name)} · ${msg.time}</div>`;
+			// If there's system text alongside normal text, append it inside bubble as muted
+			if (systemHtml) {
+				textHtml += `<span class="chat-system-inline">${systemHtml}</span>`;
+			}
 			if (textHtml) {
 				html += `<div class="chat-bubble">${textHtml}</div>`;
 			}
