@@ -1,55 +1,34 @@
 ---
 创建日期: 2026-06-15T16:40:00
-最后一次修改: 2026-06-15T16:44:00
+最后一次修改: 2026-06-16 11:19
 ---
 
-# Pj4-聊天记录气泡渲染插件
+# Chat Bubble Renderer
 
-**类型**：Obsidian 社区插件
+> Render Markdown chat logs as WeChat-style bubble dialogs directly in Obsidian.
+> 将带有 `#聊天记录` 标签的 Markdown 文件自动渲染为微信风格气泡对话框。
 
-**功能**：将带有 `#聊天记录` 标签的 Markdown 文件自动渲染为微信风格的气泡对话框格式
+![Obsidian Downloads](https://img.shields.io/badge/Obsidian-Plugin-7C3AED?logo=obsidian)
+![Version](https://img.shields.io/github/v/release/bruce2431/obsidian-chat-bubble-renderer)
 
-**灵感来源**：Pj1-李京瑾行为模拟/SubPj4-时间线工具（v3/v4 中实现了微信风格渲染）
+## Features
 
-**项目状态**：v1.0.0 可用
+1. **Auto-detect** — Files tagged with `聊天记录` or `chat` in YAML frontmatter are identified automatically
+2. **Parse** — Standard message headers `[Sender] YYYY-MM-DD HH:MM:SS`, quoted replies, merge-forward cards, and Obsidian internal links `![[file.ext]]`
+3. **Render** — 
+   - Others (left): gray bubbles
+   - Yourself (right): themed-color bubbles (WeChat green by default)
+   - Quoted replies with gray reference bar
+   - Merge-forward cards: preview first 3 lines + click to expand
+   - Images/audio/video embedded inline
+4. **Theme-aware** — Automatically follows Obsidian's dark/light theme
+5. **Fullscreen overlay** — Press `Ctrl+P` → "Render as Chat Bubbles" / "Exit Chat Bubbles"; works in both edit and reading views
 
-## 项目结构
+## Usage
 
-```
-Pj4-聊天记录气泡渲染插件/
-├── README.md               # 本文件
-├── src/                    # 插件源码
-│   ├── main.ts             # 插件入口 — post-processor 注册
-│   ├── chat-parser.ts      # 聊天记录解析器（YAML跳过、header、quote-reply、merge-forward）
-│   ├── chat-view.ts        # 气泡对话框渲染（HTML生成、Obsidian 内部链接转换）
-│   └── settings.ts         # 设置界面（自定义"自己"标识名）
-├── manifest.json           # Obsidian 插件清单
-├── package.json            # 依赖管理
-├── esbuild.config.mjs      # 构建配置
-├── styles.css              # 微信风格气泡样式（深色/浅色主题自适应）
-├── tsconfig.json           # TypeScript 配置
-├── version-bump.mjs        # 版本号递增脚本
-└── versions.json           # 版本兼容性映射
-```
+Tag your Markdown file with `tags: [类别/聊天记录]` or `tags: [chat]`, then open it in Obsidian and run `Ctrl+P` → "Render as Chat Bubbles".
 
-## 功能
-
-1. **识别**：自动检测 YAML frontmatter 中 `tags` 包含 `聊天记录` 或 `chat` 的文件
-2. **解析**：
-   - 标准消息头 `[发送者] YYYY-MM-DD HH:MM:SS`
-   - 引用回复 `> 发送者(wxid_xxx) MM-DD HH:MM`
-   - 合并转发卡片 `[合并转发|标题]`
-   - Obsidian 内部链接 `![[文件名.ext]]`（图片/音频/视频）
-3. **渲染**：
-   - 对方消息靠左（灰底），自己消息靠右（主题色）
-   - 引用回复带灰色引用条
-   - 合并转发卡片：预览 3 条 + 点击展开全文
-   - 图片/音频/视频内嵌播放
-4. **自适应**：自动跟随 Obsidian 的深色/浅色主题
-
-## 聊天记录格式
-
-预期的 Markdown 输入格式：
+### Chat Log Format
 
 ```markdown
 ---
@@ -81,59 +60,68 @@ tags:
   这是哪部番
 ```
 
-## 聊天记录渲染
+## Installation
 
-聊天记录将自动渲染为微信风格气泡对话框：
+### From Obsidian Community Plugin Store (recommended)
+Search "Chat Bubble Renderer" in Obsidian settings → Community plugins → Browse.
 
-- 对方（左）：灰色气泡 + 左下圆角
-- 自己（右）：主题色气泡 + 右下圆角
-- 引用回复：灰色引用条
-- 合并转发：卡片预览+展开
+### Manual
+1. Clone this repo
+2. `npm install && npm run build`
+3. Copy `main.js`, `styles.css`, `manifest.json` to your vault's `.obsidian/plugins/chat-bubble-renderer/`
+4. Enable in Obsidian settings
+5. Configure your own display name(s) in plugin settings (defaults: bruceMTY, 我, me, 自己)
 
-## 安装方法
-
-1. 构建：`npm run build`（生成 `main.js` + `styles.css`）
-2. 复制 `main.js`、`styles.css`、`manifest.json` 到 vault 的 `.obsidian/plugins/chat-bubble-renderer/`
-3. 在 Obsidian 设置中启用插件
-4. 在设置中配置"自己"的标识名称（默认为 bruceMTY, 我, me, 自己）
-
-## 开发
+## Development
 
 ```bash
-npm install       # 安装依赖
-npm run dev       # 开发模式（watch）
-npm run build     # 构建生产版本
-npm run lint      # ESLint 检查
-npm run deploy    # 构建 + 复制到 vault
+npm install       # Install dependencies
+npm run dev       # Watch mode
+npm run build     # Production build
+npm run lint      # ESLint
 ```
+
+## Settings
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| Self Identifiers | Comma-separated list of names that identify "you" in chat logs | bruceMTY, 我, me, 自己 |
+
+## License
+
+MIT
+
+---
 
 # LOG
 
-[2026-06-15-16:40]: 项目创建，从 obsidianmd/obsidian-sample-plugin 复制模板
-[2026-06-15-16:42]: 完成 chat-parser.ts（解析 YAML 跳过、消息头、引用回复、合并转发）
-[2026-06-15-16:43]: 完成 chat-view.ts（气泡渲染、Obsidian 内部链接转换、HTML 转义）
-[2026-06-15-16:43]: 完成 main.ts（MarkdownPostProcessor 注册，检测 #聊天记录 标签）
-[2026-06-15-16:43]: 完成 styles.css（微信风格气泡样式、深浅主题自适应）
-[2026-06-15-16:44]: 完成 settings.ts（自定义"自己"标识名）
-[2026-06-15-16:44]: 构建成功（tsc ✅ → esbuild ✅），v1.0.0 就绪
-[2026-06-15-16:45]: 修复：砍掉 vaultBasePath 参数，renderChatLog 简化为单参数
-[2026-06-15-17:05]: 重构：从 post-processor 改为 Ctrl+P 命令手动触发渲染，避免 Obsidian section 分块触发问题
-[2026-06-15-17:10]: 修复：用 view.data 替代 cachedRead，避免中文路径 ENOENT 错误
-[2026-06-15-17:15]: 样式修复：对方气泡改为 #f2f3f5（微信灰），自己气泡改为 #95ec69（微信绿+黑字）
-[2026-06-15-17:20]: 滚动修复：改替换 .markdown-preview-sizer（保留滚动容器结构），force overflow-y
-[2026-06-15-17:20]: 可用：Ctrl+P → 渲染为聊天气泡，在阅读视图下工作正常
-[2026-06-15-17:30]: 滚动持久化修复：改为独立 fixed 全屏 overlay（position:fixed; z-index:10），不再替换 Obsidian DOM；sizer 用 height:0 隐藏而非 display:none（避免内部 "content div not found" 警告）
-[2026-06-15-17:30]: 自适应界面：全屏铺满，气泡居中 max-width:800px，底部留白 80px
-[2026-06-15-17:30]: 退出机制：右上角 ✕ 按钮 + Ctrl+P「退出聊天气泡」命令 + onunload 自动清理
-[2026-06-15-17:35]: 重构：零触碰 Obsidian DOM（不隐藏 sizer），纯 fixed overlay 挂在 document.body，z-index:100；Obsidian 底部任意重绘不影响气泡；Esc 键退出
-[2026-06-15-17:40]: docs: README 示例去真实姓名，用「自己」「对方」替代；push to GitHub
-[2026-06-15-17:45]: fix: esbuild CRLF 破坏 '\\n' — 全改用 String.fromCharCode(10) / split(/\\r?\\n/)
-[2026-06-15-17:50]: fix: ![[媒体文件]] 通过 vault.getResourcePath 转为 Obsidian app:// URI 加载
-[2026-06-15-17:55]: fix: 媒体全 vault 文件名 map 搜索（getFirstLinkpathDest 对 .mp3/.mp4 跨目录解析不全）
-[2026-06-15-18:00]: refactor: 纯媒体消息不套气泡直接渲染，max-width 200px（图）/260px（音频）/280px（视频）
-[2026-06-15-18:10]: fix: audio/video 文件读为 base64 data URI（绕过 app:// 协议限制）
-[2026-06-15-18:15]: fix: isMediaOnly 识别 RESOLVED: 前缀（base64 无扩展名，不匹配 .mp3/.mp4）
-|[2026-06-15-18:20]: fix: data URI 检测改用 MIME 前缀 data:audio/|data:video/|data:image/（split('.') 在 base64 URI 上失效）
-|[2026-06-15-22:00]: feat: 系统消息（撤回/拍一拍/进群等）居中浅灰渲染，不套气泡；混入普通消息时用 .chat-system-inline 淡化处理
-|[2026-06-15-20:10]: fix: HEADER_RE .+? → .*? 支持 [] 空发送者（系统消息如撤回），空发送者识别为系统消息独立渲染
-|[2026-06-15-20:20]: fix: 短文本气泡自适应宽度（fit-content），不再拉伸占满
+| [2026-06-15-16:40] | 项目创建，从 obsidianmd/obsidian-sample-plugin 复制模板 |
+| [2026-06-15-16:42] | 完成 chat-parser.ts（解析 YAML 跳过、消息头、引用回复、合并转发） |
+| [2026-06-15-16:43] | 完成 chat-view.ts（气泡渲染、Obsidian 内部链接转换、HTML 转义） |
+| [2026-06-15-16:43] | 完成 main.ts（MarkdownPostProcessor 注册，检测 #聊天记录 标签） |
+| [2026-06-15-16:43] | 完成 styles.css（微信风格气泡样式、深浅主题自适应） |
+| [2026-06-15-16:44] | 完成 settings.ts（自定义"自己"标识名） |
+| [2026-06-15-16:44] | 构建成功（tsc ✅ → esbuild ✅），v1.0.0 就绪 |
+| [2026-06-15-16:45] | 修复：砍掉 vaultBasePath 参数，renderChatLog 简化为单参数 |
+| [2026-06-15-17:05] | 重构：从 post-processor 改为 Ctrl+P 命令手动触发渲染，避免 Obsidian section 分块触发问题 |
+| [2026-06-15-17:10] | 修复：用 view.data 替代 cachedRead，避免中文路径 ENOENT 错误 |
+| [2026-06-15-17:15] | 样式修复：对方气泡改为 #f2f3f5（微信灰），自己气泡改为 #95ec69（微信绿+黑字） |
+| [2026-06-15-17:20] | 滚动修复：改替换 .markdown-preview-sizer（保留滚动容器结构），force overflow-y |
+| [2026-06-15-17:20] | 可用：Ctrl+P → 渲染为聊天气泡，在阅读视图下工作正常 |
+| [2026-06-15-17:30] | 滚动持久化修复：改为独立 fixed 全屏 overlay（position:fixed; z-index:10），不再替换 Obsidian DOM |
+| [2026-06-15-17:30] | 自适应界面：全屏铺满，气泡居中 max-width:800px，底部留白 80px |
+| [2026-06-15-17:30] | 退出机制：右上角 ✕ 按钮 + Ctrl+P「退出聊天气泡」命令 + onunload 自动清理 |
+| [2026-06-15-17:35] | 重构：零触碰 Obsidian DOM，纯 fixed overlay 挂在 document.body |
+| [2026-06-15-17:40] | docs: README 示例去真实姓名，用「自己」「对方」替代；push to GitHub |
+| [2026-06-15-17:45] | fix: esbuild CRLF 破坏 '\\n' — 全改用 String.fromCharCode(10) |
+| [2026-06-15-17:50] | fix: ![[媒体文件]] 通过 vault.getResourcePath 转为 Obsidian app:// URI |
+| [2026-06-15-17:55] | fix: 媒体全 vault 文件名 map 搜索（getFirstLinkpathDest 跨目录解析不全） |
+| [2026-06-15-18:00] | refactor: 纯媒体消息不套气泡直接渲染 |
+| [2026-06-15-18:10] | fix: audio/video 文件读为 base64 data URI（绕过 app:// 协议限制） |
+| [2026-06-15-18:15] | fix: isMediaOnly 识别 RESOLVED: 前缀 |
+| [2026-06-15-18:20] | fix: data URI 检测改用 MIME 前缀 data:audio/\|data:video/\|data:image/ |
+| [2026-06-15-22:00] | feat: 系统消息（撤回/拍一拍/进群等）居中浅灰渲染 |
+| [2026-06-15-20:10] | fix: HEADER_RE 支持 [] 空发送者（系统消息） |
+| [2026-06-15-20:20] | fix: 短文本气泡自适应宽度（fit-content） |
+| [2026-06-15-20:30] | fix: 跳过空白 body 行，补 .amr .silk 语音格式识别 |
+| [2026-06-16-11:19] | 准备上架 Obsidian 社区市场：完善 manifest.json，更新 README（英文+中文） |
