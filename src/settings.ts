@@ -21,8 +21,6 @@ export class ChatBubbleSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		new Setting(containerEl).setName('General').setHeading();
-
 		new Setting(containerEl)
 			.setName('Self identifiers')
 			.setDesc('Comma-separated list of names that identify "yourself" (left-aligned vs right-aligned bubbles)')
