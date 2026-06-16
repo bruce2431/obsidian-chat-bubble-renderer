@@ -40,7 +40,7 @@ export default class ChatBubblePlugin extends Plugin {
 		if (!(file instanceof TFile)) return;
 
 		const cache = this.app.metadataCache.getFileCache(file);
-		const tags: string[] | undefined = cache?.frontmatter?.tags;
+		const tags = cache?.frontmatter?.tags as string[] | undefined;
 		if (!tags) { new Notice('此文件没有 #聊天记录 标签'); return; }
 
 		const tagArray = Array.isArray(tags) ? tags : [tags];
