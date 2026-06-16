@@ -21,7 +21,7 @@ export class ChatBubbleSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		containerEl.createEl('h2', { text: 'Chat Bubble Renderer Settings' });
+		new Setting(containerEl).setName('Chat Bubble Renderer Settings').setHeading();
 
 		new Setting(containerEl)
 			.setName('Self identifiers')

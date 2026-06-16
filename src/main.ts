@@ -25,7 +25,7 @@ export default class ChatBubblePlugin extends Plugin {
 			callback: () => this.closeBubbles(),
 		});
 
-		this.registerDomEvent(document, 'keydown', (evt: KeyboardEvent) => {
+		this.registerDomEvent(activeDocument, 'keydown', (evt: KeyboardEvent) => {
 			if (evt.key === 'Escape') this.closeBubbles();
 		});
 
@@ -40,7 +40,7 @@ export default class ChatBubblePlugin extends Plugin {
 		if (!(file instanceof TFile)) return;
 
 		const cache = this.app.metadataCache.getFileCache(file);
-		const tags = cache?.frontmatter?.tags;
+		const tags: string[] | undefined = cache?.frontmatter?.tags;
 		if (!tags) { new Notice('此文件没有 #聊天记录 标签'); return; }
 
 		const tagArray = Array.isArray(tags) ? tags : [tags];
@@ -63,32 +63,24 @@ export default class ChatBubblePlugin extends Plugin {
 
 		this.closeBubbles();
 
-		const overlay = view.containerEl.createDiv('chat-bubble-overlay');
-		overlay.style.cssText =
-			'position:absolute;top:0;left:0;right:0;bottom:0;z-index:100;' +
-			'overflow-y:auto;box-sizing:border-box;' +
-			'background:var(--background-primary);';
+		const overlay = view.containerEl.createDiv({ cls: 'chat-bubble-overlay' });
 
-		const closeBtn = overlay.createDiv('chat-bubble-close');
-		closeBtn.innerHTML = '\u2715';
-		closeBtn.style.cssText =
-			'position:absolute;top:16px;right:20px;z-index:101;' +
-			'font-size:22px;color:var(--text-muted);cursor:pointer;' +
-			'width:36px;height:36px;display:flex;align-items:center;justify-content:center;' +
-			'border-radius:50%;transition:background .15s;';
-		closeBtn.onmouseenter = () => closeBtn.style.background = 'var(--background-modifier-hover)';
-		closeBtn.onmouseleave = () => closeBtn.style.background = '';
+		const closeBtn = overlay.createDiv({ cls: 'chat-bubble-close' });
+		closeBtn.setText('\u2715');
 		closeBtn.onclick = () => this.closeBubbles();
 
-		const contentEl = overlay.createDiv('chat-bubble-content');
-		contentEl.innerHTML = chatHtml;
-		contentEl.style.cssText = 'max-width:800px;margin:0 auto;padding:40px 20px 80px;';
+		const contentEl = overlay.createDiv({ cls: 'chat-bubble-content' });
+		const parser = new DOMParser();
+		const chatDoc = parser.parseFromString(chatHtml, 'text/html');
+		while (chatDoc.body.firstChild) {
+			contentEl.appendChild(chatDoc.body.firstChild);
+		}
 
 		new Notice('聊天气泡已开启 | Esc 关闭');
 	}
 
 	closeBubbles() {
-		document.querySelectorAll('.chat-bubble-overlay').forEach(el => el.remove());
+		activeDocument.querySelectorAll('.chat-bubble-overlay').forEach(el => el.remove());
 	}
 
 	onunload() { this.closeBubbles(); }
@@ -106,7 +98,6 @@ export default class ChatBubblePlugin extends Plugin {
 		const audioExts = ['mp3', 'm4a', 'wav', 'ogg', 'aac', 'amr', 'silk'];
 		const videoExts = ['mp4', 'webm', 'mov'];
 
-		const result = content;
 		const replacements: { pattern: string; replacement: string }[] = [];
 
 		// Collect all matches first, then process (regex replace with async is messy)
@@ -128,11 +119,11 @@ export default class ChatBubblePlugin extends Plugin {
 						ext === 'm4a' ? 'audio/mp4' :
 						ext === 'mp4' ? 'video/mp4' :
 						ext === 'webm' ? 'video/webm' :
-						`${audioExts.includes(ext) ? 'audio' : 'video'}/${ext}`;
+							`${audioExts.includes(ext) ? 'audio' : 'video'}/${ext}`;
 					const b64 = this.arrayBufferToBase64(buf);
 					const dataUri = `data:${mime};base64,${b64}`;
 					replacements.push({ pattern: m[0], replacement: `![[RESOLVED:${dataUri}]]` });
-				} catch (_e) {
+				} catch {
 					// Fallback to resource path
 					replacements.push({ pattern: m[0], replacement: `![[RESOLVED:${this.app.vault.getResourcePath(file)}]]` });
 				}

@@ -1,6 +1,6 @@
 {
 	"name": "chat-bubble-renderer",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"description": "将带有 #聊天记录 标签的 Markdown 文件自动渲染为微信风格气泡对话框",
 	"main": "main.js",
 	"type": "module",

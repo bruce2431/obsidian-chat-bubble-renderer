@@ -4,7 +4,7 @@
  * 媒体文件（图片/音频/视频）不套气泡，直接渲染
  */
 
-import { parseChatLog, ChatMessage, QuoteReply, MergeForward } from './chat-parser';
+import { parseChatLog, QuoteReply, MergeForward } from './chat-parser';
 
 const NL = String.fromCharCode(10);
 

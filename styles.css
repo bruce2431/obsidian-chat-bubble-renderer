@@ -283,3 +283,45 @@
   color: var(--text-muted);
   opacity: 0.7;
 }
+
+/* ── 全屏气泡覆盖层 ── */
+.chat-bubble-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 100;
+  overflow-y: auto;
+  box-sizing: border-box;
+  background: var(--background-primary);
+}
+
+/* ── 关闭按钮 ── */
+.chat-bubble-close {
+  position: absolute;
+  top: 16px;
+  right: 20px;
+  z-index: 101;
+  font-size: 22px;
+  color: var(--text-muted);
+  cursor: pointer;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background 0.15s;
+}
+
+.chat-bubble-close:hover {
+  background: var(--background-modifier-hover);
+}
+
+/* ── 气泡内容区域 ── */
+.chat-bubble-content {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 40px 20px 80px;
+}
