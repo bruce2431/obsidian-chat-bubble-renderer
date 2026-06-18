@@ -1,6 +1,6 @@
 ---
 创建日期: 2026-06-15T16:40:00
-最后一次修改: 2026-06-16 13:15
+| 最后一次修改: 2026-06-19 00:39
 ---
 
 # Chat Bubble Renderer — 开发日志
@@ -47,3 +47,4 @@
 | [2026-06-16 12:56] | v1.0.2：修复 settings heading 含插件名/"settings" 字样 + any-typed tags |
 | [2026-06-16 13:05] | v1.0.3：移除 settings heading（General 也不允许） |
 | [2026-06-16 13:15] | 拆分 README → README.md（公开）+ LOG.md（内部日志） |
+| [2026-06-19-00:39] | 引用渲染重构：简化解析器 regex、quote bar 移至气泡下方独立换行；wetrace2md 回滚为单行引用格式；README 添加 exp.png |

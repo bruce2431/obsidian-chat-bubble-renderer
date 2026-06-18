@@ -27,11 +27,17 @@ tags:
 ---
 
 [自己] 2026-06-15 08:00:00
-早上好
+我喜欢你
 
-[对方] 2026-06-15 08:01:00
-早！今天有什么安排？
+[对方] 2026-06-18 08:01:52
+> [自己] 我喜欢你
+我不喜欢你
+
+[自己] 2026-06-18 11:16:02
+![[哭哭_emoj.jpg]]
 ```
+
+![渲染效果](exp.png)
 
 See the [example chat log](#) or the in-plugin help for full format support (quote replies, merge-forward, splat, etc.).
 
