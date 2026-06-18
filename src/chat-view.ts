@@ -2,9 +2,10 @@
  * Chat View - 气泡对话框渲染器
  * 将解析后的聊天消息渲染为微信风格气泡 UI
  * 媒体文件（图片/音频/视频）不套气泡，直接渲染
+ * 引用回复：quote bar 在气泡外侧（对方在上，自己在下）
  */
 
-import { parseChatLog, QuoteReply, MergeForward } from './chat-parser';
+import { parseChatLog, MergeForward } from './chat-parser';
 
 const NL = String.fromCharCode(10);
 
@@ -42,11 +43,11 @@ export function renderChatLog(markdown: string): string {
 			const isSelf = isSelfMessage(msg.name);
 			const side = isSelf ? 'self' : 'other';
 
-			// Check if ALL content is system messages
 			let isAllSystem = true;
 			let systemHtml = '';
 			let textHtml = '';
 			let mediaHtml = '';
+			let quoteHtml = '';
 
 			for (const part of msg.body) {
 				if (typeof part === 'string') {
@@ -65,7 +66,8 @@ export function renderChatLog(markdown: string): string {
 				} else {
 					// quote-reply or merge-forward — not system
 					if (part.type === 'quote-reply') {
-						textHtml += renderQuoteReply(part);
+						quoteHtml = renderQuoteBar(part.sender, part.quote);
+						textHtml += renderPlainText(part.reply);
 					} else if (part.type === 'merge-forward') {
 						textHtml += renderMergeForward(part);
 					}
@@ -76,7 +78,6 @@ export function renderChatLog(markdown: string): string {
 			// System messages: empty-sender or all-body-is-system
 			const isSystemSender = !msg.name || msg.name.trim() === '';
 			if (isSystemSender || (isAllSystem && systemHtml)) {
-				// ── 系统消息：居中浅灰，无气泡，时间+内容 ──
 				let tipHtml = '';
 				tipHtml += `<span class="chat-system-time">${escapeHtml(msg.time)}</span>` + NL;
 				tipHtml += systemHtml || textHtml;
@@ -89,12 +90,15 @@ export function renderChatLog(markdown: string): string {
 			// ── 普通消息 ──
 			html += `<div class="chat-msg ${side}">`;
 			html += `<div class="chat-meta">${escapeHtml(msg.name)} · ${msg.time}</div>`;
-			// If there's system text alongside normal text, append it inside bubble as muted
 			if (systemHtml) {
 				textHtml += `<span class="chat-system-inline">${systemHtml}</span>`;
 			}
 			if (textHtml) {
 				html += `<div class="chat-bubble">${textHtml}</div>`;
+			}
+			// Quote bar below the bubble
+			if (quoteHtml) {
+				html += quoteHtml;
 			}
 			html += mediaHtml;
 			html += '</div>';
@@ -110,9 +114,7 @@ export function renderChatLog(markdown: string): string {
 function isMediaOnly(text: string): boolean {
 	const trimmed = text.trim();
 	if (!/^!\[\[.+?\]\]$/.test(trimmed)) return false;
-	// RESOLVED: prefix = already handled audio/video/image (base64 or app://)
 	if (trimmed.includes('RESOLVED:')) return true;
-	// Fallback: filename with known media extension
 	const mediaExts = /\.(png|jpe?g|gif|webp|bmp|svg|mp3|m4a|wav|ogg|aac|amr|silk|mp4|webm|mov|emoj)\b/i;
 	return mediaExts.test(trimmed);
 }
@@ -130,14 +132,12 @@ function renderPlainText(text: string): string {
 
 		if (file.startsWith('RESOLVED:')) {
 			const uri = file.slice(9);
-			// data URI: check MIME type (no file extension)
 			if (uri.startsWith('data:audio/')) {
 				return `<audio controls preload="auto" src="${uri}" class="chat-bare-audio" onerror="this.style.display='none'"></audio>`;
 			}
 			if (uri.startsWith('data:video/')) {
 				return `<video controls preload="auto" src="${uri}" class="chat-bare-video" onerror="this.style.display='none'"></video>`;
 			}
-			// app:// URI or data:image: render as image
 			const width = w ? ` width="${w}"` : '';
 			return `<img src="${uri}" class="chat-bare-img"${width} loading="lazy" onerror="this.style.display='none'">`;
 		}
@@ -156,11 +156,9 @@ function renderPlainText(text: string): string {
 	return result;
 }
 
-function renderQuoteReply(part: QuoteReply): string {
-	let html = '';
-	html += `<div>${renderPlainText(part.reply)}</div>`;
-	html += `<div class="chat-quote-bar">${escapeHtml(part.sender)}: ${renderPlainText(part.quote)}</div>`;
-	return html;
+/** 渲染引用条（仅 bar，不含回复正文） */
+function renderQuoteBar(sender: string, quote: string): string {
+	return `<div class="chat-quote-bar">${escapeHtml(sender)}: ${escapeHtml(quote)}</div>`;
 }
 
 function renderMergeForward(part: MergeForward): string {

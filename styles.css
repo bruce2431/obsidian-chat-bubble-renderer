@@ -151,22 +151,21 @@
   max-width: 100%;
 }
 
-/* ── 引用回复（微信风格灰色引用条） ── */
+/* ── 引用回复（气泡下方，独立换行） ── */
 .chat-quote-bar {
-  margin-top: 4px;
-  padding: 6px 10px;
-  background: rgba(255, 255, 255, 0.05);
-  border-left: 3px solid var(--text-muted);
-  border-radius: 4px;
   font-size: 12px;
   color: var(--text-muted);
+  padding: 3px 12px;
+  margin-top: 2px;
   line-height: 1.5;
 }
 
+.chat-msg.other .chat-quote-bar {
+  text-align: left;
+}
+
 .chat-msg.self .chat-quote-bar {
-  background: rgba(0, 0, 0, 0.1);
-  color: rgba(255, 255, 255, 0.8);
-  border-left-color: rgba(255, 255, 255, 0.4);
+  text-align: right;
 }
 
 /* ── 合并转发卡片 ── */

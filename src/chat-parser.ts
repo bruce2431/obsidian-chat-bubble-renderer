@@ -10,9 +10,7 @@
  * [发送者名] YYYY-MM-DD HH:MM:SS
  * 消息内容
  * 
- * > 引用者(wxid_xxx) MM-DD HH:MM
- * > 被引用内容
- * > > [引用]
+ * > [引用者] 被引用内容
  * 回复内容
  * 
  * [合并转发|对话标题]
@@ -47,9 +45,7 @@ export interface ParseResult {
 }
 
 const HEADER_RE = /^\[(.*?)\]\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/;
-const QUOTE_REPLY_RE = /^>\s+(.+?)\(wxid_[^)]+\)\s+\d{2}-\d{2}\s+\d{2}:\d{2}(?::\d{2})?\s*$/;
-const QUOTE_CONTENT_RE = /^>\s+(.+)/;
-const QUOTE_REF_RE = /^>\s*>\s*\[引用\]/;
+const QUOTE_REPLY_RE = /^>\s*\[(.+?)\]\s+(.+)/;
 const MERGE_FORWARD_RE = /^\[合并转发\|(.+?)\]/;
 const INDENT_CONTENT_RE = /^\s{2,}(.+)/;
 
@@ -120,25 +116,11 @@ export function parseChatLog(markdown: string): ParseResult {
 
 			// ── Quote reply ──
 			if (QUOTE_REPLY_RE.test(line)) {
-				const senderMatch = line.match(QUOTE_REPLY_RE)!;
-				const sender = senderMatch[1];
-				let quoteContent = '';
-				let j = i + 1;
-				while (j < lines.length) {
-					const nl = lines[j].trim();
-					if (QUOTE_REF_RE.test(nl)) { j++; continue; }
-					if (nl.startsWith('> ')) {
-						const contentMatch = nl.match(QUOTE_CONTENT_RE);
-						if (contentMatch) {
-							if (quoteContent) quoteContent += NL;
-							quoteContent += contentMatch[1];
-						}
-						j++;
-					} else {
-						break;
-					}
-				}
+				const m = line.match(QUOTE_REPLY_RE)!;
+				const sender = m[1];
+				const quote = m[2];
 				let replyContent = '';
+				let j = i + 1;
 				while (j < lines.length) {
 					const nl = lines[j].trim();
 					if (!nl || HEADER_RE.test(nl)) break;
@@ -146,7 +128,7 @@ export function parseChatLog(markdown: string): ParseResult {
 					replyContent += nl;
 					j++;
 				}
-				currentMsg.body.push({ type: 'quote-reply', sender, quote: quoteContent, reply: replyContent });
+				currentMsg.body.push({ type: 'quote-reply', sender, quote, reply: replyContent });
 				i = j - 1;
 				continue;
 			}
