@@ -29,8 +29,44 @@ export default class ChatBubblePlugin extends Plugin {
 			if (evt.key === 'Escape') this.closeBubbles();
 		});
 
+		// Auto-render when switching to reading view on tagged files
+		this.registerEvent(
+			this.app.workspace.on('active-leaf-change', () => this.autoRenderIfTagged())
+		);
+				// Also catch source/preview mode toggle (Ctrl+E)
+					this.registerInterval(window.setInterval(() => {
+						const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+						if (!activeView) { this.closeBubbles(); return; }
+						if (activeView.getMode() !== 'preview') { this.closeBubbles(); return; }
+						this.autoRenderIfTagged();
+					}, 300));
+
 		this.addSettingTab(new ChatBubbleSettingTab(this.app, this));
 	}
+
+		autoRenderIfTagged() {
+			const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+			if (!view) { this.closeBubbles(); return; }
+
+			const file = view.file;
+			if (!(file instanceof TFile)) { this.closeBubbles(); return; }
+
+			// Already rendered — skip
+			if (view.containerEl.querySelector('.chat-bubble-overlay')) return;
+
+			// Only in reading (preview) mode
+			if (view.getMode() !== 'preview') { this.closeBubbles(); return; }
+
+			const cache = this.app.metadataCache.getFileCache(file);
+			const tags = cache?.frontmatter?.tags as string[] | undefined;
+			if (!tags) { this.closeBubbles(); return; }
+
+			const tagArray = Array.isArray(tags) ? tags : [tags];
+			if (!tagArray.some((t: string) => t.includes('聊天记录'))) { this.closeBubbles(); return; }
+
+			// Auto-render silently
+			this.doRender(view);
+		}
 
 	async renderCurrentView() {
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
@@ -52,12 +88,18 @@ export default class ChatBubblePlugin extends Plugin {
 			new Notice('请先切换到阅读视图（Ctrl+E）'); return;
 		}
 
-		const content = view.data;
-		if (!content) { new Notice('无法读取文件内容'); return; }
-
 		new Notice('正在渲染聊天气泡...');
+		this.doRender(view);
+		new Notice('聊天气泡已开启 | Esc 关闭');
+	}
 
-		// Resolve media links — audio/video get base64, images get resource path
+	async doRender(view: MarkdownView) {
+		const content = view.data;
+		if (!content) return;
+
+		const file = view.file;
+		if (!(file instanceof TFile)) return;
+
 		const resolved = await this.resolveMediaLinks(content, file);
 		const chatHtml = renderChatLog(resolved);
 
@@ -75,8 +117,6 @@ export default class ChatBubblePlugin extends Plugin {
 		while (chatDoc.body.firstChild) {
 			contentEl.appendChild(chatDoc.body.firstChild);
 		}
-
-		new Notice('聊天气泡已开启 | Esc 关闭');
 	}
 
 	closeBubbles() {

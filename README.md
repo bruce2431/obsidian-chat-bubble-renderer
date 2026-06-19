@@ -51,7 +51,7 @@ See the [example chat log](#) or the in-plugin help for full format support (quo
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| Self Identifiers | Names that identify "you" in chat logs |  我, me, 自己 |
+| Self Identifiers | Names that identify "you" in chat logs | 我, me, 自己 |
 
 ## License
 

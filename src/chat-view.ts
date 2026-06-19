@@ -43,11 +43,12 @@ export function renderChatLog(markdown: string): string {
 			const isSelf = isSelfMessage(msg.name);
 			const side = isSelf ? 'self' : 'other';
 
-			let isAllSystem = true;
-			let systemHtml = '';
-			let textHtml = '';
-			let mediaHtml = '';
-			let quoteHtml = '';
+					let isAllSystem = true;
+					let systemHtml = '';
+					let textHtml = '';
+					let mediaHtml = '';
+					let quoteHtml = '';
+					let forwardHtml = '';
 
 			for (const part of msg.body) {
 				if (typeof part === 'string') {
@@ -68,8 +69,8 @@ export function renderChatLog(markdown: string): string {
 					if (part.type === 'quote-reply') {
 						quoteHtml = renderQuoteBar(part.sender, part.quote);
 						textHtml += renderPlainText(part.reply);
-					} else if (part.type === 'merge-forward') {
-						textHtml += renderMergeForward(part);
+							} else if (part.type === 'merge-forward') {
+								forwardHtml += renderMergeForward(part);
 					}
 					isAllSystem = false;
 				}
@@ -100,8 +101,9 @@ export function renderChatLog(markdown: string): string {
 			if (quoteHtml) {
 				html += quoteHtml;
 			}
-			html += mediaHtml;
-			html += '</div>';
+					html += mediaHtml;
+					html += forwardHtml;
+					html += '</div>';
 		}
 
 		html += '</div>';
@@ -162,24 +164,23 @@ function renderQuoteBar(sender: string, quote: string): string {
 }
 
 function renderMergeForward(part: MergeForward): string {
+	const uid = 'fw-' + Math.random().toString(36).slice(2, 8);
+
 	let cardHtml = '<div class="chat-forward-card">';
 	cardHtml += `<div class="forward-title">${escapeHtml(part.title)}</div>`;
 
-	const preview = part.items.slice(0, 3);
-	for (const item of preview) {
-		cardHtml += `<div class="forward-item">${escapeHtml(item)}</div>`;
-	}
-	if (part.items.length > 3) {
-		cardHtml += `<div class="forward-more">… 共 ${part.items.length} 条消息</div>`;
-	}
+	// Click to open modal — clone hidden template, wrap in overlay
+	cardHtml += `<div class="forward-expand" onclick="(function(){var t=document.getElementById('${uid}'),c=t.cloneNode(true);c.style.display='';var o=document.createElement('div');o.className='chat-forward-overlay';o.addEventListener('click',function(e){if(e.target===o)o.remove()});var m=document.createElement('div');m.className='chat-forward-modal';m.appendChild(c);o.appendChild(m);document.body.appendChild(o)})()">查看全部聊天记录</div>`;
+	cardHtml += '</div>';
 
-	const uid = 'fw-' + Math.random().toString(36).slice(2, 8);
-	cardHtml += `<div class="forward-expand" onclick="document.getElementById('${uid}').classList.toggle('open')">查看全部聊天记录</div>`;
-	cardHtml += `<div class="forward-full" id="${uid}">`;
+	// Hidden template — all items rendered into modal
+	cardHtml += `<div id="${uid}" class="forward-detail-template" style="display:none">`;
+	cardHtml += `<div class="forward-detail-title">${escapeHtml(part.title)}</div>`;
 	for (const item of part.items) {
 		cardHtml += `<div class="forward-item">${escapeHtml(item)}</div>`;
 	}
-	cardHtml += '</div></div>';
+	cardHtml += '</div>';
+
 	cardHtml += '<div class="forward-footer">聊天记录</div>';
 	return cardHtml;
 }
