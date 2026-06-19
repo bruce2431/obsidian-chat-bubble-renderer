@@ -8,15 +8,16 @@
 
 ## Features
 
-- **Auto-detect** — Files tagged with `聊天记录` or `chat` are identified automatically
-- **Parse** — Standard message headers `[Sender] YYYY-MM-DD HH:MM:SS`, quoted replies, merge-forward cards, and Obsidian internal links `![[file.ext]]`
-- **Render** — WeChat-style bubbles: others left (gray), yourself right (green); quoted replies with gray bar; merge-forward cards with click-to-expand; images/audio/video inline
+- **Auto-render** — Switch to reading view on tagged files, bubbles appear automatically. `Ctrl+P` manual trigger also available.
+- **Parse** — Standard message headers `[Sender] YYYY-MM-DD HH:MM:SS`, quoted replies, merge-forward cards, system messages (nudge/recall), and Obsidian internal links `![[file.ext]]`
+- **Render** — WeChat-style bubbles: others left (gray), yourself right (green); quoted replies with gray bar; merge-forward cards with click-to-expand modal; images/audio/video inline with click-to-preview
+- **File attachments** — PDF/DOC/XLS etc. rendered as file cards (name + size + type icon); PDFs open preview modal on click
+- **Media preview** — Click any image or video to view full-size in dark overlay modal
 - **Theme-aware** — Follows Obsidian's dark/light theme automatically
-- **Fullscreen overlay** — `Ctrl+P` → "Render as Chat Bubbles" / "Exit Chat Bubbles"
 
 ## Usage
 
-Tag your Markdown file with `tags: [聊天记录]`, then `Ctrl+P` → "Render as Chat Bubbles".
+Tag your Markdown file with `tags: [聊天记录]`, then switch to **reading view** (`Ctrl+E`). Bubbles render automatically. `Esc` to exit.
 
 ### Chat Log Format
 
@@ -35,11 +36,14 @@ tags:
 
 [自己] 2026-06-18 11:16:02
 ![[哭哭_emoj.jpg]]
+
+[对方] 2026-06-19 17:34:39
+![[文件.pdf]]
 ```
 
 ![渲染效果](exp.png)
 
-See the [example chat log](#) or the in-plugin help for full format support (quote replies, merge-forward, splat, etc.).
+Supported formats: quote replies (`>`), merge-forward (`[合并转发|title]`), system messages (nudge/recall), media embeds (`![[file.ext]]`), file attachments (PDF/DOC/XLS).
 
 ## Installation
 
