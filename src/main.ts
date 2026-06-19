@@ -5,7 +5,7 @@ import {
 	Notice,
 } from 'obsidian';
 import { DEFAULT_SETTINGS, ChatBubbleSettings, ChatBubbleSettingTab } from './settings';
-import { renderChatLog } from './chat-view';
+import { renderChatLog, FileMeta } from './chat-view';
 
 export default class ChatBubblePlugin extends Plugin {
 	settings!: ChatBubbleSettings;
@@ -93,15 +93,18 @@ export default class ChatBubblePlugin extends Plugin {
 		new Notice('聊天气泡已开启 | Esc 关闭');
 	}
 
-	async doRender(view: MarkdownView) {
-		const content = view.data;
-		if (!content) return;
+		async doRender(view: MarkdownView) {
+			const content = view.data;
+			if (!content) return;
 
-		const file = view.file;
-		if (!(file instanceof TFile)) return;
+			const file = view.file;
+			if (!(file instanceof TFile)) return;
 
-		const resolved = await this.resolveMediaLinks(content, file);
-		const chatHtml = renderChatLog(resolved);
+			// Collect file attachment metadata before resolution
+			const fileMetas = await this.buildFileMetas(content, file);
+
+			const resolved = await this.resolveMediaLinks(content, file);
+			const chatHtml = renderChatLog(resolved, fileMetas);
 
 		this.closeBubbles();
 
@@ -125,8 +128,42 @@ export default class ChatBubblePlugin extends Plugin {
 
 	onunload() { this.closeBubbles(); }
 
-	/**
-	 * Replace ![[file.ext]] with:
+		/**
+		 * Build FileMeta[] for document attachments (PDF, DOC, etc.)
+		 * Scans the original content for ![[file.pdf]] and looks up sizes in vault.
+		 */
+		async buildFileMetas(content: string, sourceFile: TFile): Promise<FileMeta[]> {
+			const metas: FileMeta[] = [];
+			const allFiles = this.app.vault.getFiles();
+			const nameMap = new Map<string, TFile>();
+			for (const f of allFiles) nameMap.set(f.name, f);
+
+			const fileExts = /\.(pdf|docx?|xlsx?|pptx?|txt|zip|rar|7z)\b/i;
+			const re = /!\[\[(.+?)\]\]/g;
+			let m: RegExpExecArray | null;
+			while ((m = re.exec(content)) !== null) {
+				const linktext = m[1];
+				if (!fileExts.test(linktext)) continue;
+
+				const file = nameMap.get(linktext) ||
+					this.app.metadataCache.getFirstLinkpathDest(linktext, sourceFile.path);
+				if (!(file instanceof TFile)) continue;
+
+				const size = this.formatFileSize(file.stat.size);
+				const url = this.app.vault.getResourcePath(file);
+				metas.push({ name: linktext, size, url });
+			}
+			return metas;
+		}
+
+		formatFileSize(bytes: number): string {
+			if (bytes < 1024) return bytes + 'B';
+			if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + 'K';
+			return (bytes / (1024 * 1024)).toFixed(1) + 'M';
+		}
+
+		/**
+		 * Replace ![[file.ext]] with:
 	 *   - images: ![[RESOLVED:app://...]] (resource URI works for <img>)
 	 *   - audio/video: ![[RESOLVED:data:audio/...;base64,...]] (base64 data URI)
 	 */
