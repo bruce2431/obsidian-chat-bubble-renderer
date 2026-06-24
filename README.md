@@ -10,9 +10,9 @@
 
 - **Auto-render** — Switch to reading view on tagged files, bubbles appear automatically. `Ctrl+P` manual trigger also available.
 - **Parse** — Standard message headers `[Sender] YYYY-MM-DD HH:MM:SS`, quoted replies, merge-forward cards, system messages (nudge/recall), and Obsidian internal links `![[file.ext]]`
-- **Render** — WeChat-style bubbles: others left (gray), yourself right (green); quoted replies with gray bar; merge-forward cards with click-to-expand modal; images/audio/video inline with click-to-preview
-- **File attachments** — PDF/DOC/XLS etc. rendered as file cards (name + size + type icon); PDFs open preview modal on click
-- **Media preview** — Click any image or video to view full-size in dark overlay modal
+- **Render** — WeChat-style bubbles: others left (gray), yourself right (green); quoted replies with gray bar and media icons; merge-forward cards with click-to-expand bubble view (sender+timestamp, self/other alignment, inline media); images/audio/video inline with click-to-preview
+- **File attachments** — PDF/DOC/XLS etc. rendered as file cards (name + type icon); PDFs open preview modal on click; file cards in merge-forward with send-time alignment
+- **Media preview** — Click any image or video to view full-size in dark overlay modal (close by clicking background)
 - **Theme-aware** — Follows Obsidian's dark/light theme automatically
 
 ## Usage
