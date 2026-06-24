@@ -66,29 +66,29 @@ export function renderChatLog(markdown: string, fileMetas?: FileMeta[], selfName
 			let fileHtml = '';
 
 			for (const part of msg.body) {
-				if (typeof part === 'string') {
-					if (!part.trim()) continue;
-					const rendered = renderPlainText(part);
-					if (isFileAttachment(part)) {
-						fileHtml += renderFileCard(part, metaMap);
-						isAllSystem = false;
-					} else if (isMediaOnly(part)) {
-						mediaHtml += rendered;
-						isAllSystem = false;
-					} else if (isSystemMessage(part)) {
-						systemHtml += rendered + NL;
-						isAllSystem = isAllSystem && true;
+					if (typeof part === 'string') {
+						if (!part.trim()) continue;
+						const rendered = classifyAndRender(part, metaMap, 'chat');
+						if (rendered.type === 'file') {
+							fileHtml += rendered.html;
+							isAllSystem = false;
+						} else if (rendered.type === 'media') {
+							mediaHtml += rendered.html;
+							isAllSystem = false;
+						} else if (rendered.type === 'system') {
+							systemHtml += rendered.html + NL;
+							isAllSystem = isAllSystem && true;
+						} else {
+							textHtml += rendered.html + NL;
+							isAllSystem = false;
+						}
 					} else {
-						textHtml += rendered + NL;
-						isAllSystem = false;
-					}
-				} else {
 					// quote-reply or merge-forward — not system
 					if (part.type === 'quote-reply') {
 						quoteHtml = renderQuoteBar(part.sender, part.quote);
 						textHtml += renderPlainText(part.reply);
 					} else if (part.type === 'merge-forward') {
-						forwardHtml += renderMergeForward(part, selfNames);
+						forwardHtml += renderMergeForward(part, metaMap, selfNames);
 					}
 					isAllSystem = false;
 				}
@@ -163,6 +163,22 @@ function isFileAttachment(text: string): boolean {
 	if (!/^!\[\[.+?\]\]$/.test(trimmed)) return false;
 	const fileExts = /\.(pdf|docx?|xlsx?|pptx?|txt|zip|rar|7z)\b/i;
 	return fileExts.test(trimmed);
+}
+
+type RenderedType = 'text' | 'media' | 'file' | 'system';
+
+/** Classify content + render — shared by main chat and merge-forward */
+function classifyAndRender(content: string, metaMap: Map<string, FileMeta>, cssPrefix: string): { html: string; type: RenderedType } {
+	if (isFileAttachment(content)) {
+		return { html: renderFileCard(content, metaMap), type: 'file' };
+	}
+	if (isMediaOnly(content)) {
+		return { html: renderPlainText(content), type: 'media' };
+	}
+	if (isSystemMessage(content)) {
+		return { html: renderPlainText(content), type: 'system' };
+	}
+	return { html: renderPlainText(content), type: 'text' };
 }
 
 /** Render a file attachment as a card with name, size, type icon — click to preview */
@@ -294,7 +310,7 @@ function renderQuoteBar(sender: string, quote: string): string {
 	return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}</span>${escapeHtml(quote)}</div>`;
 }
 
-function renderMergeForward(part: MergeForward, selfNames?: string[]): string {
+function renderMergeForward(part: MergeForward, metaMap: Map<string, FileMeta>, selfNames?: string[]): string {
 	const uid = 'fw-' + Math.random().toString(36).slice(2, 8);
 
 	let cardHtml = '<div class="chat-forward-card">';
@@ -320,21 +336,19 @@ function renderMergeForward(part: MergeForward, selfNames?: string[]): string {
 				const side = isSelf ? 'self' : 'other';
 			cardHtml += `<div class="forward-item ${side}"><span class="forward-sender">${escapeHtml(sender)} <span class="forward-time">${escapeHtml(time)}</span></span>`;
 
-			// Pure media (image/video/file) — bare, no bubble
-			if (isMediaOnly(content) || isFileAttachment(content)) {
-				let rendered: string;
-				if (isFileAttachment(content)) {
-					const raw = content.match(/!\[\[(.+?)\]\]/)?.[1] || '';
-					const uri = raw.startsWith('RESOLVED:') ? raw.slice(9).split('?')[0] : '';
-					const filename = raw.replace(/^RESOLVED:/, '').split('?')[0].split('/').pop() || raw;
-					const ext = (filename.split('.').pop() || '').toUpperCase();
-					rendered = renderFileCardMini(ext, safeDecodeURI(filename), uri);
-				} else {
-					rendered = renderPlainText(content);
-				}
-				cardHtml += `<div class="forward-media">${rendered}</div>`;
+			// Classify and render — shared logic with main chat
+			const sr = classifyAndRender(content, metaMap, 'forward');
+			if (sr.type === 'file') {
+				// Merge-forward uses compact file card
+				const raw = content.match(/!\[\[(.+?)\]\]/)?.[1] || '';
+				const uri = raw.startsWith('RESOLVED:') ? raw.slice(9).split('?')[0] : '';
+				const filename = raw.replace(/^RESOLVED:/, '').split('?')[0].split('/').pop() || raw;
+				const ext = (filename.split('.').pop() || '').toUpperCase();
+				cardHtml += `<div class="forward-media">${renderFileCardMini(ext, safeDecodeURI(filename), uri)}</div>`;
+			} else if (sr.type === 'media') {
+				cardHtml += `<div class="forward-media">${sr.html}</div>`;
 			} else {
-				cardHtml += `<div class="forward-bubble">${renderPlainText(content)}</div>`;
+				cardHtml += `<div class="forward-bubble">${sr.html}</div>`;
 			}
 			cardHtml += '</div>';
 		} else {
