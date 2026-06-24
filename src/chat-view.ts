@@ -146,6 +146,17 @@ function isMediaOnly(text: string): boolean {
 	return mediaExts.test(trimmed);
 }
 
+/** Shared: generate PDF preview onclick JS */
+function pdfOnClick(uri: string): string {
+	return ` onclick="(function(){var o=document.createElement('div');o.className='chat-file-overlay';o.addEventListener('click',function(e){if(e.target===o)o.remove()});var m=document.createElement('div');m.className='chat-file-modal';var f=document.createElement('iframe');f.src='${uri}';f.style.width='100%';f.style.height='75vh';f.style.border='none';f.style.borderRadius='0 0 12px 12px';m.appendChild(f);o.appendChild(m);document.body.appendChild(o)})()"`;
+}
+
+/** Shared: render a compact file card (used in merge-forward) */
+function renderFileCardMini(ext: string, filename: string, uri: string): string {
+	const clickAttr = ext === 'PDF' && uri ? pdfOnClick(uri) : '';
+	return `<span class="forward-file-card"${clickAttr}><span class="chat-quote-file-icon">${escapeHtml(ext)}</span>${escapeHtml(filename)}</span>`;
+}
+
 /** Returns true if the text is a file attachment (PDF, DOC, etc.) */
 function isFileAttachment(text: string): boolean {
 	const trimmed = text.trim();
@@ -176,9 +187,7 @@ function renderFileCard(part: string, metaMap: Map<string, FileMeta>): string {
 	const size = meta?.size || '';
 
 	// PDF: click to open preview modal; other files: no preview
-	const clickAttr = ext === 'PDF' && url
-		? ` onclick="(function(){var o=document.createElement('div');o.className='chat-file-overlay';o.addEventListener('click',function(e){if(e.target===o)o.remove()});var m=document.createElement('div');m.className='chat-file-modal';var f=document.createElement('iframe');f.src='${url}';f.style.width='100%';f.style.height='75vh';f.style.border='none';f.style.borderRadius='0 0 12px 12px';m.appendChild(f);o.appendChild(m);document.body.appendChild(o)})()"`
-		: '';
+	const clickAttr = ext === 'PDF' && url ? pdfOnClick(url) : '';
 
 	let html = `<div class="chat-file-card"${clickAttr}>`;
 
@@ -313,16 +322,15 @@ function renderMergeForward(part: MergeForward): string {
 
 			// Pure media (image/video/file) — bare, no bubble
 			if (isMediaOnly(content) || isFileAttachment(content)) {
-				let rendered = renderPlainText(content);
+				let rendered: string;
 				if (isFileAttachment(content)) {
 					const raw = content.match(/!\[\[(.+?)\]\]/)?.[1] || '';
 					const uri = raw.startsWith('RESOLVED:') ? raw.slice(9).split('?')[0] : '';
 					const filename = raw.replace(/^RESOLVED:/, '').split('?')[0].split('/').pop() || raw;
 					const ext = (filename.split('.').pop() || '').toUpperCase();
-					const clickAttr = ext === 'PDF' && uri
-						? ` onclick="(function(){var o=document.createElement('div');o.className='chat-file-overlay';o.addEventListener('click',function(e){if(e.target===o)o.remove()});var m=document.createElement('div');m.className='chat-file-modal';var f=document.createElement('iframe');f.src='${uri}';f.style.width='100%';f.style.height='75vh';f.style.border='none';f.style.borderRadius='0 0 12px 12px';m.appendChild(f);o.appendChild(m);document.body.appendChild(o)})()"`
-						: '';
-					rendered = `<span class="forward-file-card"${clickAttr}><span class="chat-quote-file-icon">${escapeHtml(ext)}</span>${escapeHtml(safeDecodeURI(filename))}</span>`;
+					rendered = renderFileCardMini(ext, safeDecodeURI(filename), uri);
+				} else {
+					rendered = renderPlainText(content);
 				}
 				cardHtml += `<div class="forward-media">${rendered}</div>`;
 			} else {

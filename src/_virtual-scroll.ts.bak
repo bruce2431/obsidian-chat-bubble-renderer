@@ -1,0 +1,195 @@
+/**
+ * Virtual Scrolling Chat View
+ * 
+ * Padding-based virtual scroll: only renders messages visible in the viewport
+ * (plus a buffer), using CSS padding-top/bottom as spacers for off-screen content.
+ * 
+ * For 67K+ message files, DOM nodes stay at ~150 instead of 67K.
+ */
+
+import { ChatMessage } from './chat-parser';
+import { renderMessage, FileMeta, MediaEntry } from './chat-view';
+
+const ESTIMATED_MSG_HEIGHT = 80; // px — initial estimate, refined after first render
+const BUFFER = 15; // messages to keep rendered above/below viewport
+
+export class VirtualChatView {
+	private messages: ChatMessage[];
+	private metaMap: Map<string, FileMeta>;
+	private mediaMap?: Map<string, MediaEntry>;
+	private closeCallback: () => void;
+
+	private container: HTMLDivElement | null = null;
+	private scrollEl: HTMLDivElement | null = null;
+	private innerEl: HTMLDivElement | null = null;
+
+	private heights: number[];           // measured/estimated height per message
+	private renderedRange: [number, number] = [-1, -1];
+	private rafId: number | null = null;
+	private resizeObs: ResizeObserver | null = null;
+	private restoringScroll = false;
+
+	constructor(
+		messages: ChatMessage[],
+		fileMetas: FileMeta[],
+		mediaMap: Map<string, MediaEntry> | undefined,
+		closeCallback: () => void,
+	) {
+		this.messages = messages;
+		this.closeCallback = closeCallback;
+		this.mediaMap = mediaMap;
+
+		this.metaMap = new Map<string, FileMeta>();
+		for (const fm of fileMetas) this.metaMap.set(fm.name, fm);
+
+		this.heights = new Array(messages.length).fill(ESTIMATED_MSG_HEIGHT);
+	}
+
+	render(): HTMLDivElement {
+		const overlay = document.createElement('div');
+		overlay.className = 'chat-bubble-overlay';
+
+		// Scroll container
+		this.scrollEl = overlay.createDiv({ cls: 'chat-vscroll-container' });
+
+		// Inner wrapper — padding-top/bottom act as spacers
+		this.innerEl = this.scrollEl.createDiv({ cls: 'chat-vscroll-inner' });
+
+		// Preamble (above the message list, always rendered)
+		// — handled separately by main.ts, not here
+
+		this.container = overlay;
+
+		// Initial render — may have clientHeight=0 if not yet in DOM,
+		// but ResizeObserver will correct once appended
+		this.renderRange();
+
+		// Scroll listener — requestAnimationFrame debounced
+		this.scrollEl.addEventListener('scroll', () => this.scheduleRender(), { passive: true });
+
+		// Resize observer — re-render when container size changes
+		if (typeof ResizeObserver !== 'undefined') {
+			this.resizeObs = new ResizeObserver(() => this.scheduleRender());
+			this.resizeObs.observe(this.scrollEl);
+		}
+
+		return overlay;
+	}
+
+	/** Rebuild the overlay (e.g. after theme change / resize) */
+	refresh(): void {
+		this.renderedRange = [-1, -1];
+		this.renderRange();
+	}
+
+	/** Scroll to a specific message index */
+	scrollTo(index: number): void {
+		if (!this.scrollEl) return;
+		let offset = 0;
+		for (let i = 0; i < index && i < this.messages.length; i++) {
+			offset += this.heights[i];
+		}
+		this.scrollEl.scrollTop = offset;
+	}
+
+	destroy(): void {
+		if (this.rafId !== null) cancelAnimationFrame(this.rafId);
+		if (this.resizeObs) { this.resizeObs.disconnect(); this.resizeObs = null; }
+		if (this.container) this.container.remove();
+		this.container = null;
+		this.scrollEl = null;
+		this.innerEl = null;
+	}
+
+	// ──────── Private ────────
+
+	private scheduleRender(): void {
+		if (this.rafId !== null) return;
+		if (this.restoringScroll) return;
+		this.rafId = requestAnimationFrame(() => {
+			this.rafId = null;
+			this.renderRange();
+		});
+	}
+
+	private renderRange(): void {
+		if (!this.scrollEl || !this.innerEl) return;
+		if (this.messages.length === 0) return;
+
+		const sc = this.scrollEl;
+		const viewH = sc.clientHeight;
+		const scrollTop = sc.scrollTop;
+
+		// Find start index from cumulative heights
+		let cum = 0;
+		let start = 0;
+		for (let i = 0; i < this.messages.length; i++) {
+			if (cum + this.heights[i] > scrollTop) { start = i; break; }
+			cum += this.heights[i];
+			if (i === this.messages.length - 1) start = i;
+		}
+
+		// Find end index
+		let visibleH = 0;
+		let end = start;
+		for (let i = start; i < this.messages.length; i++) {
+			visibleH += this.heights[i];
+			end = i;
+			if (visibleH >= viewH) break;
+		}
+
+		// Add buffer
+		const bufStart = Math.max(0, start - BUFFER);
+		const bufEnd = Math.min(this.messages.length, end + BUFFER + 1);
+
+		// Skip if range unchanged
+		if (bufStart === this.renderedRange[0] && bufEnd === this.renderedRange[1]) return;
+		this.renderedRange = [bufStart, bufEnd];
+
+		// Calculate padding
+		let topPad = 0;
+		for (let i = 0; i < bufStart; i++) topPad += this.heights[i];
+
+		let bottomPad = 0;
+		for (let i = bufEnd; i < this.messages.length; i++) bottomPad += this.heights[i];
+
+		// Render visible messages
+		let html = '';
+		for (let i = bufStart; i < bufEnd; i++) {
+			html += renderMessage(this.messages[i], this.metaMap, this.mediaMap);
+		}
+
+		// Save scroll position, update DOM, restore
+		const saved = sc.scrollTop;
+		this.innerEl.style.paddingTop = topPad + 'px';
+		this.innerEl.style.paddingBottom = bottomPad + 'px';
+		this.innerEl.innerHTML = html;
+		this.restoringScroll = true;
+		sc.scrollTop = saved;
+		requestAnimationFrame(() => { this.restoringScroll = false; });
+
+		// Measure actual heights — schedule after layout
+		requestAnimationFrame(() => this.measureHeights(bufStart, bufEnd));
+	}
+
+	private measureHeights(start: number, end: number): void {
+		if (!this.innerEl) return;
+		const children = this.innerEl.children;
+		let changed = false;
+		for (let i = 0; i < children.length; i++) {
+			const idx = start + i;
+			if (idx >= this.messages.length) break;
+			const h = (children[i] as HTMLElement).offsetHeight;
+			// Only grow — never shrink. Prevents video elements from
+			// resetting to 30px control-bar height after DOM is rebuilt.
+			if (h > this.heights[idx]) {
+				this.heights[idx] = h;
+				changed = true;
+			}
+		}
+		// Invalidate cache so next scroll will re-render with updated heights
+		if (changed) {
+			this.renderedRange = [-1, -1];
+		}
+	}
+}

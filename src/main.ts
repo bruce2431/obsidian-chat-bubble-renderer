@@ -94,17 +94,15 @@ export default class ChatBubblePlugin extends Plugin {
 	}
 
 		async doRender(view: MarkdownView) {
-			const content = view.data;
-			if (!content) return;
+				const content = view.data;
+					if (!content) return;
 
-			const file = view.file;
-			if (!(file instanceof TFile)) return;
+					// Build vault file lookup once
+					const nameMap = this.buildNameMap();
 
-			// Collect file attachment metadata before resolution
-			const fileMetas = await this.buildFileMetas(content, file);
-
-			const resolved = await this.resolveMediaLinks(content, file);
-			const chatHtml = renderChatLog(resolved, fileMetas);
+					const fileMetas = await this.buildFileMetas(content, nameMap);
+					const resolved = await this.resolveMediaLinks(content, nameMap);
+					const chatHtml = renderChatLog(resolved, fileMetas);
 
 		this.closeBubbles();
 
@@ -124,16 +122,17 @@ export default class ChatBubblePlugin extends Plugin {
 
 	onunload() { this.closeBubbles(); }
 
+	buildNameMap(): Map<string, TFile> {
+		const map = new Map<string, TFile>();
+		for (const f of this.app.vault.getFiles()) map.set(f.name, f);
+		return map;
+	}
+
 		/**
 		 * Build FileMeta[] for document attachments (PDF, DOC, etc.)
-		 * Scans the original content for ![[file.pdf]] and looks up sizes in vault.
 		 */
-		async buildFileMetas(content: string, sourceFile: TFile): Promise<FileMeta[]> {
+		async buildFileMetas(content: string, nameMap: Map<string, TFile>): Promise<FileMeta[]> {
 			const metas: FileMeta[] = [];
-			const allFiles = this.app.vault.getFiles();
-			const nameMap = new Map<string, TFile>();
-			for (const f of allFiles) nameMap.set(f.name, f);
-
 			const fileExts = /\.(pdf|docx?|xlsx?|pptx?|txt|zip|rar|7z)\b/i;
 			const re = /!\[\[(.+?)\]\]/g;
 			let m: RegExpExecArray | null;
@@ -141,9 +140,8 @@ export default class ChatBubblePlugin extends Plugin {
 				const linktext = m[1];
 				if (!fileExts.test(linktext)) continue;
 
-				const file = nameMap.get(linktext) ||
-					this.app.metadataCache.getFirstLinkpathDest(linktext, sourceFile.path);
-				if (!(file instanceof TFile)) continue;
+				const file = nameMap.get(linktext);
+					if (!file) continue;
 
 				const size = this.formatFileSize(file.stat.size);
 				const url = this.app.vault.getResourcePath(file);
@@ -163,25 +161,18 @@ export default class ChatBubblePlugin extends Plugin {
 	 *   - images: ![[RESOLVED:app://...]] (resource URI works for <img>)
 	 *   - audio/video: ![[RESOLVED:data:audio/...;base64,...]] (base64 data URI)
 	 */
-	async resolveMediaLinks(content: string, sourceFile: TFile): Promise<string> {
-		const allFiles = this.app.vault.getFiles();
-		const nameMap = new Map<string, TFile>();
-		for (const f of allFiles) nameMap.set(f.name, f);
-
+	async resolveMediaLinks(content: string, nameMap: Map<string, TFile>): Promise<string> {
 		const audioExts = ['mp3', 'm4a', 'wav', 'ogg', 'aac', 'amr', 'silk'];
 		const videoExts = ['mp4', 'webm', 'mov'];
 
 		const replacements: { pattern: string; replacement: string }[] = [];
 
-		// Collect all matches first, then process (regex replace with async is messy)
 		const re = /!\[\[(.+?)\]\]/g;
 		let m: RegExpExecArray | null;
 		while ((m = re.exec(content)) !== null) {
 			const linktext = m[1];
-			const file = nameMap.get(linktext) ||
-				this.app.metadataCache.getFirstLinkpathDest(linktext, sourceFile.path);
-
-			if (!(file instanceof TFile)) continue;
+			const file = nameMap.get(linktext);
+			if (!file) continue;
 
 			const ext = file.extension.toLowerCase();
 
@@ -212,13 +203,15 @@ export default class ChatBubblePlugin extends Plugin {
 		return out;
 	}
 
-	arrayBufferToBase64(buffer: ArrayBuffer): string {
+arrayBufferToBase64(buffer: ArrayBuffer): string {
 		const bytes = new Uint8Array(buffer);
-		let binary = '';
-		for (let i = 0; i < bytes.length; i++) {
-			binary += String.fromCharCode(bytes[i]);
+		const CHUNK = 4096;
+		const parts: string[] = [];
+		for (let i = 0; i < bytes.length; i += CHUNK) {
+			const chunk = bytes.subarray(i, i + CHUNK);
+			parts.push(String.fromCharCode.apply(null, chunk as unknown as number[]));
 		}
-		return btoa(binary);
+		return btoa(parts.join(''));
 	}
 
 	async loadSettings() {
