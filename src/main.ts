@@ -110,10 +110,6 @@ export default class ChatBubblePlugin extends Plugin {
 
 		const overlay = view.containerEl.createDiv({ cls: 'chat-bubble-overlay' });
 
-		const closeBtn = overlay.createDiv({ cls: 'chat-bubble-close' });
-		closeBtn.setText('\u2715');
-		closeBtn.onclick = () => this.closeBubbles();
-
 		const contentEl = overlay.createDiv({ cls: 'chat-bubble-content' });
 		const parser = new DOMParser();
 		const chatDoc = parser.parseFromString(chatHtml, 'text/html');

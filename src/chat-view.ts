@@ -177,7 +177,7 @@ function renderFileCard(part: string, metaMap: Map<string, FileMeta>): string {
 
 	// PDF: click to open preview modal; other files: no preview
 	const clickAttr = ext === 'PDF' && url
-		? ` onclick="(function(){var o=document.createElement('div');o.className='chat-file-overlay';o.addEventListener('click',function(e){if(e.target===o)o.remove()});var m=document.createElement('div');m.className='chat-file-modal';var x=document.createElement('div');x.className='chat-forward-modal-close';x.textContent='✕';x.addEventListener('click',function(){o.remove()});m.appendChild(x);var f=document.createElement('iframe');f.src='${url}';f.style.width='100%';f.style.height='75vh';f.style.border='none';f.style.borderRadius='0 0 12px 12px';m.appendChild(f);o.appendChild(m);document.body.appendChild(o)})()"`
+		? ` onclick="(function(){var o=document.createElement('div');o.className='chat-file-overlay';o.addEventListener('click',function(e){if(e.target===o)o.remove()});var m=document.createElement('div');m.className='chat-file-modal';var f=document.createElement('iframe');f.src='${url}';f.style.width='100%';f.style.height='75vh';f.style.border='none';f.style.borderRadius='0 0 12px 12px';m.appendChild(f);o.appendChild(m);document.body.appendChild(o)})()"`
 		: '';
 
 	let html = `<div class="chat-file-card"${clickAttr}>`;
@@ -196,7 +196,7 @@ function renderFileCard(part: string, metaMap: Map<string, FileMeta>): string {
 }
 
 function isSelfMessage(name: string): boolean {
-	const selfNames = ['自己', '我', 'me'];
+	const selfNames = ['自己', '我', 'me', 'bruceMTY'];
 	return selfNames.some(n => name.toLowerCase() === n.toLowerCase());
 }
 
@@ -237,12 +237,52 @@ function mediaClick(type: 'img' | 'video'): string {
 	const el = type === 'img'
 		? "var e=document.createElement('img');e.src=t.src;e.className='chat-media-full'"
 		: "var e=document.createElement('video');e.src=t.src;e.controls=true;e.className='chat-media-full';e.play()";
-	return `(function(t){var o=document.createElement('div');o.className='chat-media-overlay';o.addEventListener('click',function(ev){if(ev.target===o)o.remove()});var m=document.createElement('div');m.className='chat-media-modal';var x=document.createElement('div');x.className='chat-forward-modal-close';x.textContent='✕';x.addEventListener('click',function(){o.remove()});m.appendChild(x);${el};m.appendChild(e);o.appendChild(m);document.body.appendChild(o)})(event.target)`.replace(/"/g, '&quot;');
+	return `(function(t){var o=document.createElement('div');o.className='chat-media-overlay';o.addEventListener('click',function(ev){if(ev.target===o)o.remove()});var m=document.createElement('div');m.className='chat-media-modal';${el};m.appendChild(e);o.appendChild(m);document.body.appendChild(o)})(event.target)`.replace(/"/g, '&quot;');
 }
 
 /** 渲染引用条（仅 bar，不含回复正文） */
 function renderQuoteBar(sender: string, quote: string): string {
-	return `<div class="chat-quote-bar">${escapeHtml(sender)}: ${escapeHtml(quote)}</div>`;
+	// Detect media reference: ![[RESOLVED:data:image/...]] or ![[RESOLVED:app://...file.mp4]]
+	const mediaMatch = quote.match(/!\[\[RESOLVED:(.+?)\]\]/);
+	if (mediaMatch) {
+		const resolved = mediaMatch[1];
+		const isVideo = resolved.startsWith('data:video/') || /\.(mp4|webm|mov)\b/i.test(resolved);
+		const isAudio = resolved.startsWith('data:audio/') || /\.(mp3|m4a|wav|ogg|aac|amr|silk)\b/i.test(resolved);
+		const isImage = resolved.startsWith('data:image/') || /\.(png|jpe?g|gif|webp|bmp)\b/i.test(resolved);
+		const isFile = /\.(pdf|docx?|xlsx?|pptx?|txt|zip|rar|7z)\b/i.test(resolved);
+
+		let preview = '';
+		if (isImage) {
+			preview = `<img src="${resolved}" class="chat-quote-thumb">`;
+		} else if (isVideo) {
+			preview = '<span class="chat-quote-video-icon">▶</span>';
+		} else if (isAudio) {
+			preview = '<span class="chat-quote-audio-icon">🔊</span>';
+		} else if (isFile) {
+			const filename = quote.match(/!\[\[(.+?)\]\]/)?.[1] || '';
+			const raw = filename.replace(/^RESOLVED:/, '').split('?')[0].split('/').pop() || filename;
+			const name = safeDecodeURI(raw);
+			const ext = (name.split('.').pop() || '').toUpperCase();
+			preview = `<span class="chat-quote-file"><span class="chat-quote-file-icon">${escapeHtml(ext)}</span>${escapeHtml(name)}</span>`;
+		} else {
+			preview = escapeHtml(quote.replace(/!\[\[RESOLVED:.*?\]\]/, ''));
+		}
+		return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}</span>${preview}</div>`;
+	}
+
+	// Check for plain ![[file.ext]]
+	const plainMatch = quote.match(/!\[\[(.+?)\]\]/);
+	if (plainMatch) {
+		const filename = plainMatch[1];
+		const ext = filename.split('.').pop()?.toLowerCase() || '';
+		if (['mp4', 'webm', 'mov'].includes(ext)) return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}</span><span class="chat-quote-video-icon">▶</span></div>`;
+		if (['mp3', 'm4a', 'wav', 'ogg', 'aac'].includes(ext)) return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}</span><span class="chat-quote-audio-icon">🔊</span></div>`;
+		if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'].includes(ext)) return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}</span>[图片]</div>`;
+		const extUpper = (filename.split('.').pop() || '').toUpperCase();
+		return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}</span><span class="chat-quote-file"><span class="chat-quote-file-icon">${escapeHtml(extUpper)}</span>${escapeHtml(filename)}</span></div>`;
+	}
+
+	return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}</span>${escapeHtml(quote)}</div>`;
 }
 
 function renderMergeForward(part: MergeForward): string {
@@ -255,16 +295,52 @@ function renderMergeForward(part: MergeForward): string {
 	cardHtml += `<div class="forward-expand" onclick="(function(){var t=document.getElementById('${uid}'),c=t.cloneNode(true);c.style.display='';var o=document.createElement('div');o.className='chat-forward-overlay';o.addEventListener('click',function(e){if(e.target===o)o.remove()});var m=document.createElement('div');m.className='chat-forward-modal';m.appendChild(c);o.appendChild(m);document.body.appendChild(o)})()">查看全部聊天记录</div>`;
 	cardHtml += '</div>';
 
-	// Hidden template — all items rendered into modal
+	// Hidden template — items rendered as mini bubbles
 	cardHtml += `<div id="${uid}" class="forward-detail-template" style="display:none">`;
 	cardHtml += `<div class="forward-detail-title">${escapeHtml(part.title)}</div>`;
 	for (const item of part.items) {
-		cardHtml += `<div class="forward-item">${escapeHtml(item)}</div>`;
+		// Format: senderName|timestamp: content  OR  plain text
+		const pipeIdx = item.indexOf('|');
+		if (pipeIdx > 0) {
+			const sender = item.slice(0, pipeIdx).trim();
+			const rest = item.slice(pipeIdx + 1).trimStart();
+			const colonIdx = rest.indexOf(': ');
+			const time = colonIdx > 0 ? rest.slice(0, colonIdx) : '';
+			const content = colonIdx > 0 ? rest.slice(colonIdx + 2) : rest;
+			const isSelf = isSelfMessage(sender);
+			const side = isSelf ? 'self' : 'other';
+			cardHtml += `<div class="forward-item ${side}"><span class="forward-sender">${escapeHtml(sender)} <span class="forward-time">${escapeHtml(time)}</span></span>`;
+
+			// Pure media (image/video/file) — bare, no bubble
+			if (isMediaOnly(content) || isFileAttachment(content)) {
+				let rendered = renderPlainText(content);
+				if (isFileAttachment(content)) {
+					const raw = content.match(/!\[\[(.+?)\]\]/)?.[1] || '';
+					const uri = raw.startsWith('RESOLVED:') ? raw.slice(9).split('?')[0] : '';
+					const filename = raw.replace(/^RESOLVED:/, '').split('?')[0].split('/').pop() || raw;
+					const ext = (filename.split('.').pop() || '').toUpperCase();
+					const clickAttr = ext === 'PDF' && uri
+						? ` onclick="(function(){var o=document.createElement('div');o.className='chat-file-overlay';o.addEventListener('click',function(e){if(e.target===o)o.remove()});var m=document.createElement('div');m.className='chat-file-modal';var f=document.createElement('iframe');f.src='${uri}';f.style.width='100%';f.style.height='75vh';f.style.border='none';f.style.borderRadius='0 0 12px 12px';m.appendChild(f);o.appendChild(m);document.body.appendChild(o)})()"`
+						: '';
+					rendered = `<span class="forward-file-card"${clickAttr}><span class="chat-quote-file-icon">${escapeHtml(ext)}</span>${escapeHtml(safeDecodeURI(filename))}</span>`;
+				}
+				cardHtml += `<div class="forward-media">${rendered}</div>`;
+			} else {
+				cardHtml += `<div class="forward-bubble">${renderPlainText(content)}</div>`;
+			}
+			cardHtml += '</div>';
+		} else {
+			cardHtml += `<div class="forward-item system"><span class="forward-plain">${escapeHtml(item)}</span></div>`;
+		}
 	}
 	cardHtml += '</div>';
 
 	cardHtml += '<div class="forward-footer">聊天记录</div>';
 	return cardHtml;
+}
+
+function safeDecodeURI(str: string): string {
+	try { return decodeURIComponent(str); } catch { return str; }
 }
 
 function escapeHtml(str: string): string {

@@ -99,11 +99,14 @@ export function parseChatLog(markdown: string): ParseResult {
 				}
 				// Merge sender lines with following content
 				const mergedItems: string[] = [];
-				const senderRe = /^(.+?)\s+\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}/;
+				// Match: 我 2026-06-19 17:34  OR  我 2026-6-19 下午5:34
+				const senderRe = /^(.+?)\s+(\d{4}-\d{1,2}-\d{1,2}\s+(?:上午|下午|凌晨|中午)?\s*\d{1,2}:\d{2})/;
 				for (let k = 0; k < cardLines.length; k++) {
-					if (senderRe.test(cardLines[k]) && k + 1 < cardLines.length && !senderRe.test(cardLines[k + 1])) {
-						const senderName = cardLines[k].match(senderRe)![1];
-						mergedItems.push(senderName + ': ' + cardLines[k + 1]);
+					const sm = cardLines[k].match(senderRe);
+					if (sm && k + 1 < cardLines.length && !senderRe.test(cardLines[k + 1])) {
+						const senderName = sm[1];
+						const timeStr = sm[2];
+						mergedItems.push(senderName + '|' + timeStr + ': ' + cardLines[k + 1]);
 						k++;
 					} else {
 						mergedItems.push(cardLines[k]);

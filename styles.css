@@ -158,6 +158,51 @@
   padding: 3px 12px;
   margin-top: 2px;
   line-height: 1.5;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.chat-quote-sender {
+  flex-shrink: 0;
+  font-weight: 500;
+}
+.chat-quote-thumb {
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.chat-quote-video-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  background: var(--background-modifier-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.chat-quote-audio-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.chat-quote-file {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.chat-quote-file-icon {
+  background: #e74c3c;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 4px;
+  border-radius: 3px;
+  flex-shrink: 0;
 }
 
 .chat-msg.other .chat-quote-bar {
@@ -190,11 +235,78 @@
 }
 
 .chat-forward-card .forward-item {
-  font-size: 12px;
-  color: var(--text-muted);
-  padding: 3px 0;
+  display: flex;
+  flex-direction: column;
+  padding: 6px 0;
   border-bottom: 1px solid var(--background-modifier-border);
-  line-height: 1.5;
+  gap: 2px;
+}
+.forward-item.self {
+  align-items: flex-end !important;
+  text-align: right;
+}
+.forward-item.other {
+  align-items: flex-start;
+}
+.forward-item.system {
+  align-items: center;
+}
+.forward-sender {
+  font-size: 10px;
+  color: var(--text-muted);
+  padding: 0 8px;
+}
+.forward-time {
+  opacity: 0.6;
+}
+.forward-bubble {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  max-width: 80%;
+  width: fit-content;
+  word-break: break-word;
+}
+.forward-item.self .forward-bubble {
+  background: #95ec69;
+  color: #000;
+  margin-left: auto;
+}
+.forward-item.self .forward-sender {
+  text-align: right;
+  width: 100%;
+}
+.forward-item.other .forward-bubble {
+  background: var(--background-secondary);
+}
+.forward-item.self .forward-media {
+  margin-left: auto;
+  width: fit-content;
+}
+.forward-item.other .forward-media {
+  margin-right: auto;
+  width: fit-content;
+}
+.forward-plain {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.forward-media-icon {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.forward-file-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--background-secondary);
+  font-size: 12px;
+  cursor: default;
+}
+.forward-file-card:hover {
+  background: var(--background-modifier-hover);
 }
 
 .chat-forward-card .forward-item:last-child {
