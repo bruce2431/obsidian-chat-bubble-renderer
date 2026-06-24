@@ -13,6 +13,7 @@
 - **Render** — WeChat-style bubbles: others left (gray), yourself right (green); quoted replies with gray bar and media icons; merge-forward cards with click-to-expand bubble view (sender+timestamp, self/other alignment, inline media); images/audio/video inline with click-to-preview
 - **File attachments** — PDF/DOC/XLS etc. rendered as file cards (name + type icon); PDFs open preview modal on click; file cards in merge-forward with send-time alignment
 - **Media preview** — Click any image or video to view full-size in dark overlay modal (close by clicking background)
+- **Performance** — Chunked base64 encoding, shared vault-name lookup, event-driven auto-render (no polling)
 - **Theme-aware** — Follows Obsidian's dark/light theme automatically
 
 ## Usage
