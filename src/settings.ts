@@ -6,7 +6,7 @@ export interface ChatBubbleSettings {
 }
 
 export const DEFAULT_SETTINGS: ChatBubbleSettings = {
-	selfNames: ['bruceMTY', '我', 'me', '自己'],
+	selfNames: ['我', 'me'],
 };
 
 export class ChatBubbleSettingTab extends PluginSettingTab {
@@ -23,14 +23,27 @@ export class ChatBubbleSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Self identifiers')
-			.setDesc('Comma-separated list of names that identify "yourself" (left-aligned vs right-aligned bubbles)')
+			.setDesc('Comma-separated names that identify "yourself". Default: 我, me')
 			.addText((text) =>
 				text
-					.setPlaceholder('bruceMTY, 我, me, 自己')
+					.setPlaceholder('我, me')
 					.setValue(this.plugin.settings.selfNames.join(', '))
 					.onChange(async (value) => {
-						this.plugin.settings.selfNames = value.split(',').map(s => s.trim()).filter(s => s);
+						this.plugin.settings.selfNames = value.split(/[,，]/).map(s => s.trim()).filter(s => s);
 						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName('Reset to default')
+			.setDesc('Restore self identifiers to 我, me')
+			.addButton((btn) =>
+				btn
+					.setButtonText('Reset')
+					.onClick(async () => {
+						this.plugin.settings = Object.assign({}, DEFAULT_SETTINGS);
+						await this.plugin.saveSettings();
+						this.display();
 					}),
 			);
 	}

@@ -35,7 +35,7 @@ function isSystemMessage(text: string): boolean {
 	return SYSTEM_MSG_KEYWORDS.some(kw => trimmed.includes(kw));
 }
 
-export function renderChatLog(markdown: string, fileMetas?: FileMeta[]): string {
+export function renderChatLog(markdown: string, fileMetas?: FileMeta[], selfNames?: string[]): string {
 	const { preamble, messages } = parseChatLog(markdown);
 
 	// Build file metadata lookup by filename
@@ -54,8 +54,8 @@ export function renderChatLog(markdown: string, fileMetas?: FileMeta[]): string 
 		html += '<div class="chat-container">';
 
 		for (const msg of messages) {
-			const isSelf = isSelfMessage(msg.name);
-			const side = isSelf ? 'self' : 'other';
+			const isSelf = isSelfMessage(msg.name, selfNames);
+				const side = isSelf ? 'self' : 'other';
 
 			let isAllSystem = true;
 			let systemHtml = '';
@@ -88,7 +88,7 @@ export function renderChatLog(markdown: string, fileMetas?: FileMeta[]): string 
 						quoteHtml = renderQuoteBar(part.sender, part.quote);
 						textHtml += renderPlainText(part.reply);
 					} else if (part.type === 'merge-forward') {
-						forwardHtml += renderMergeForward(part);
+						forwardHtml += renderMergeForward(part, selfNames);
 					}
 					isAllSystem = false;
 				}
@@ -204,9 +204,9 @@ function renderFileCard(part: string, metaMap: Map<string, FileMeta>): string {
 	return html;
 }
 
-function isSelfMessage(name: string): boolean {
-	const selfNames = ['自己', '我', 'me', 'bruceMTY'];
-	return selfNames.some(n => name.toLowerCase() === n.toLowerCase());
+function isSelfMessage(name: string, selfNames?: string[]): boolean {
+	const names = selfNames?.length ? selfNames : ['自己', '我', 'me'];
+	return names.some(n => name.toLowerCase() === n.toLowerCase());
 }
 
 function renderPlainText(text: string): string {
@@ -294,7 +294,7 @@ function renderQuoteBar(sender: string, quote: string): string {
 	return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}</span>${escapeHtml(quote)}</div>`;
 }
 
-function renderMergeForward(part: MergeForward): string {
+function renderMergeForward(part: MergeForward, selfNames?: string[]): string {
 	const uid = 'fw-' + Math.random().toString(36).slice(2, 8);
 
 	let cardHtml = '<div class="chat-forward-card">';
@@ -316,8 +316,8 @@ function renderMergeForward(part: MergeForward): string {
 			const colonIdx = rest.indexOf(': ');
 			const time = colonIdx > 0 ? rest.slice(0, colonIdx) : '';
 			const content = colonIdx > 0 ? rest.slice(colonIdx + 2) : rest;
-			const isSelf = isSelfMessage(sender);
-			const side = isSelf ? 'self' : 'other';
+			const isSelf = isSelfMessage(sender, selfNames);
+				const side = isSelf ? 'self' : 'other';
 			cardHtml += `<div class="forward-item ${side}"><span class="forward-sender">${escapeHtml(sender)} <span class="forward-time">${escapeHtml(time)}</span></span>`;
 
 			// Pure media (image/video/file) — bare, no bubble

@@ -9,6 +9,7 @@ import { renderChatLog, FileMeta } from './chat-view';
 
 export default class ChatBubblePlugin extends Plugin {
 	settings!: ChatBubbleSettings;
+	private rendering = false;
 
 	async onload() {
 		await this.loadSettings();
@@ -29,17 +30,16 @@ export default class ChatBubblePlugin extends Plugin {
 			if (evt.key === 'Escape') this.closeBubbles();
 		});
 
-		// Auto-render when switching to reading view on tagged files
+		// Auto-render on tab switch (with brief delay for metadata to load)
 		this.registerEvent(
-			this.app.workspace.on('active-leaf-change', () => this.autoRenderIfTagged())
+			this.app.workspace.on('active-leaf-change', () => {
+				setTimeout(() => this.autoRenderIfTagged(), 100);
+			})
 		);
-				// Also catch source/preview mode toggle (Ctrl+E)
-					this.registerInterval(window.setInterval(() => {
-						const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-						if (!activeView) { this.closeBubbles(); return; }
-						if (activeView.getMode() !== 'preview') { this.closeBubbles(); return; }
-						this.autoRenderIfTagged();
-					}, 300));
+		// Catch source/preview mode toggle (Ctrl+E)
+		this.registerEvent(
+			this.app.workspace.on('layout-change', () => this.autoRenderIfTagged())
+		);
 
 		this.addSettingTab(new ChatBubbleSettingTab(this.app, this));
 	}
@@ -51,11 +51,11 @@ export default class ChatBubblePlugin extends Plugin {
 			const file = view.file;
 			if (!(file instanceof TFile)) { this.closeBubbles(); return; }
 
+			// Only in reading (preview) mode — close if not
+			if (view.getMode() !== 'preview') { this.closeBubbles(); return; }
+
 			// Already rendered — skip
 			if (view.containerEl.querySelector('.chat-bubble-overlay')) return;
-
-			// Only in reading (preview) mode
-			if (view.getMode() !== 'preview') { this.closeBubbles(); return; }
 
 			const cache = this.app.metadataCache.getFileCache(file);
 			const tags = cache?.frontmatter?.tags as string[] | undefined;
@@ -64,7 +64,6 @@ export default class ChatBubblePlugin extends Plugin {
 			const tagArray = Array.isArray(tags) ? tags : [tags];
 			if (!tagArray.some((t: string) => t.includes('聊天记录'))) { this.closeBubbles(); return; }
 
-			// Auto-render silently
 			this.doRender(view);
 		}
 
@@ -94,27 +93,30 @@ export default class ChatBubblePlugin extends Plugin {
 	}
 
 		async doRender(view: MarkdownView) {
+			if (this.rendering) return;
+			this.rendering = true;
+			try {
 				const content = view.data;
-					if (!content) return;
+				if (!content) return;
 
-					// Build vault file lookup once
-					const nameMap = this.buildNameMap();
+				const nameMap = this.buildNameMap();
+				const fileMetas = await this.buildFileMetas(content, nameMap);
+				const resolved = await this.resolveMediaLinks(content, nameMap);
+				const chatHtml = renderChatLog(resolved, fileMetas, this.settings.selfNames);
 
-					const fileMetas = await this.buildFileMetas(content, nameMap);
-					const resolved = await this.resolveMediaLinks(content, nameMap);
-					const chatHtml = renderChatLog(resolved, fileMetas);
+				this.closeBubbles();
 
-		this.closeBubbles();
-
-		const overlay = view.containerEl.createDiv({ cls: 'chat-bubble-overlay' });
-
-		const contentEl = overlay.createDiv({ cls: 'chat-bubble-content' });
-		const parser = new DOMParser();
-		const chatDoc = parser.parseFromString(chatHtml, 'text/html');
-		while (chatDoc.body.firstChild) {
-			contentEl.appendChild(chatDoc.body.firstChild);
+				const overlay = view.containerEl.createDiv({ cls: 'chat-bubble-overlay' });
+				const contentEl = overlay.createDiv({ cls: 'chat-bubble-content' });
+				const parser = new DOMParser();
+				const chatDoc = parser.parseFromString(chatHtml, 'text/html');
+				while (chatDoc.body.firstChild) {
+					contentEl.appendChild(chatDoc.body.firstChild);
+				}
+			} finally {
+				this.rendering = false;
+			}
 		}
-	}
 
 	closeBubbles() {
 		activeDocument.querySelectorAll('.chat-bubble-overlay').forEach(el => el.remove());
