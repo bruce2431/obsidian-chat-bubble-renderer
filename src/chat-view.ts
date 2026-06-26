@@ -68,6 +68,12 @@ export function renderChatLog(markdown: string, fileMetas?: FileMeta[], selfName
 			for (const part of msg.body) {
 					if (typeof part === 'string') {
 						if (!part.trim()) continue;
+						// Audio-only → render as WeChat-style voice bubble
+						if (isAudioMedia(part)) {
+							mediaHtml += renderAudioBubble(part, side);
+							isAllSystem = false;
+							continue;
+						}
 						const rendered = classifyAndRender(part, metaMap, 'chat');
 						if (rendered.type === 'file') {
 							fileHtml += rendered.html;
@@ -131,18 +137,35 @@ export function renderChatLog(markdown: string, fileMetas?: FileMeta[], selfName
 	return html;
 }
 
-/** Returns true if the text is purely a media reference (no surrounding text) */
+/** Returns true if the text is purely an audio reference */
+function isAudioMedia(text: string): boolean {
+	const trimmed = text.trim();
+	if (!/^!\[\[.+?\]\]$/.test(trimmed)) return false;
+	if (trimmed.includes('data:audio/')) return true;
+	return /\.(mp3|m4a|wav|ogg|aac|amr|silk)\b/i.test(trimmed);
+}
+
+/** Render audio as a WeChat-style voice bubble with click-to-play and duration display */
+function renderAudioBubble(text: string, side: string): string {
+	const match = text.match(/!\[\[(.+?)\]\]/);
+	const resolved = match?.[1] || '';
+	let uri = resolved.startsWith('RESOLVED:') ? resolved.slice(9) : resolved;
+	const uid = 'au-' + Math.random().toString(36).slice(2, 8);
+	// Hidden audio loads metadata for duration, same element used for playback
+	return `<div class="chat-audio-msg ${side}" onclick="(function(t){var a=t.querySelector('audio');a.paused?a.play():a.pause()})(event.currentTarget)" style="cursor:pointer"><span class="chat-audio-icon">🔊</span><span class="chat-audio-text">语音消息</span><span class="chat-audio-dur"></span><audio id="${uid}" src="${uri}" hidden preload="metadata" onloadedmetadata="var d=Math.ceil(this.duration);var p=this.closest('.chat-audio-msg');p.querySelector('.chat-audio-dur').textContent=d+'&quot;';p.querySelector('.chat-audio-text').textContent='语音消息 '" onclick="event.stopPropagation()"></audio></div>`;
+}
+// Click handler in renderChatLog attaches dynamically — see below
+
+/** Returns true if the text is purely a media reference (no surrounding text — images/video only, audio handled separately) */
 function isMediaOnly(text: string): boolean {
 	const trimmed = text.trim();
 	if (!/^!\[\[.+?\]\]$/.test(trimmed)) return false;
 	if (trimmed.includes('RESOLVED:')) {
-		// RESOLVED data URIs are media; app:// could be file attachment — check extension
-		if (trimmed.includes('data:audio/') || trimmed.includes('data:video/')) return true;
-		// app:// URL — check if it's a media extension
-		const mediaExts = /\.(png|jpe?g|gif|webp|bmp|svg|mp3|m4a|wav|ogg|aac|amr|silk|mp4|webm|mov|emoj)/i;
+		if (trimmed.includes('data:video/')) return true;
+		const mediaExts = /\.(png|jpe?g|gif|webp|bmp|svg|mp4|webm|mov|emoj)/i;
 		return mediaExts.test(trimmed);
 	}
-	const mediaExts = /\.(png|jpe?g|gif|webp|bmp|svg|mp3|m4a|wav|ogg|aac|amr|silk|mp4|webm|mov|emoj)\b/i;
+	const mediaExts = /\.(png|jpe?g|gif|webp|bmp|svg|mp4|webm|mov|emoj)\b/i;
 	return mediaExts.test(trimmed);
 }
 
@@ -265,6 +288,19 @@ function mediaClick(type: 'img' | 'video'): string {
 	return `(function(t){var o=document.createElement('div');o.className='chat-media-overlay';o.addEventListener('click',function(ev){if(ev.target===o)o.remove()});var m=document.createElement('div');m.className='chat-media-modal';${el};m.appendChild(e);o.appendChild(m);document.body.appendChild(o)})(event.target)`.replace(/"/g, '&quot;');
 }
 
+/** Generate onclick JS for media preview modal — accepts explicit URI (for quote bar where element has no src) */
+function mediaClickUri(type: 'img' | 'video', uri: string): string {
+	const el = type === 'img'
+		? `var e=document.createElement('img');e.src='${uri}';e.className='chat-media-full'`
+		: `var e=document.createElement('video');e.src='${uri}';e.controls=true;e.className='chat-media-full';e.play()`;
+	return `(function(){var o=document.createElement('div');o.className='chat-media-overlay';o.addEventListener('click',function(ev){if(ev.target===o)o.remove()});var m=document.createElement('div');m.className='chat-media-modal';${el};m.appendChild(e);o.appendChild(m);document.body.appendChild(o)})()`.replace(/"/g, '&quot;');
+}
+
+/** Generate onclick JS for inline audio playback in quote bar — plays via Audio() without DOM change */
+function audioPlayInline(uri: string): string {
+	return `(function(){var a=new Audio('${uri}');a.play()})()`.replace(/"/g, '&quot;');
+}
+
 /** 渲染引用条（仅 bar，不含回复正文） */
 function renderQuoteBar(sender: string, quote: string): string {
 	// Detect media reference: ![[RESOLVED:data:image/...]] or ![[RESOLVED:app://...file.mp4]]
@@ -278,17 +314,25 @@ function renderQuoteBar(sender: string, quote: string): string {
 
 		let preview = '';
 		if (isImage) {
-			preview = `<img src="${resolved}" class="chat-quote-thumb">`;
+			preview = `<img src="${resolved}" class="chat-quote-thumb" onclick="${mediaClickUri('img', resolved)}" style="cursor:pointer">`;
 		} else if (isVideo) {
-			preview = '<span class="chat-quote-video-icon">▶</span>';
+			preview = `<video src="${resolved}" class="chat-quote-video-thumb" onclick="${mediaClickUri('video', resolved)}" style="cursor:pointer" muted preload="metadata"></video>`;
 		} else if (isAudio) {
-			preview = '<span class="chat-quote-audio-icon">🔊</span>';
+			const isDataUri = resolved.startsWith('data:');
+			if (isDataUri) {
+				preview = `<span class="chat-quote-audio-bar" onclick="${audioPlayInline(resolved)}" style="cursor:pointer"><span class="chat-quote-audio-icon">🔊</span>语音消息</span>`;
+			} else {
+				const raw = resolved.split('?')[0].split('/').pop() || 'audio';
+				const name = safeDecodeURI(raw);
+				preview = `<span class="chat-quote-audio-bar" onclick="${audioPlayInline(resolved)}" style="cursor:pointer"><span class="chat-quote-audio-icon">🔊</span>${escapeHtml(name)}</span>`;
+			}
 		} else if (isFile) {
 			const filename = quote.match(/!\[\[(.+?)\]\]/)?.[1] || '';
 			const raw = filename.replace(/^RESOLVED:/, '').split('?')[0].split('/').pop() || filename;
 			const name = safeDecodeURI(raw);
 			const ext = (name.split('.').pop() || '').toUpperCase();
-			preview = `<span class="chat-quote-file"><span class="chat-quote-file-icon">${escapeHtml(ext)}</span>${escapeHtml(name)}</span>`;
+			const clickAttr = ext === 'PDF' ? pdfOnClick(resolved) + ' style="cursor:pointer"' : '';
+			preview = `<span class="chat-quote-file"${clickAttr}><span class="chat-quote-file-icon">${escapeHtml(ext)}</span>${escapeHtml(name)}</span>`;
 		} else {
 			preview = escapeHtml(quote.replace(/!\[\[RESOLVED:.*?\]\]/, ''));
 		}
