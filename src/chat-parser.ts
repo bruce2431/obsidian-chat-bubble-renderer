@@ -48,6 +48,8 @@ const HEADER_RE = /^\[(.*?)\]\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/;
 const QUOTE_REPLY_RE = /^>\s*\[(.+?)\]\s+(.+)/;
 const MERGE_FORWARD_RE = /^\[合并转发\|(.+?)\]/;
 const INDENT_CONTENT_RE = /^\s{2,}(.+)/;
+/** Merge forward sender line: 名字 YYYY-M-D 上午/下午 H:MM */
+const FORWARD_SENDER_RE = /^(.+?)\s+(\d{4}-\d{1,2}-\d{1,2}\s+(?:上午|下午|凌晨|中午)?\s*\d{1,2}:\d{2})/;
 
 export function parseChatLog(markdown: string): ParseResult {
 	const lines = markdown.split(/\r?\n/);
@@ -100,10 +102,9 @@ export function parseChatLog(markdown: string): ParseResult {
 				// Merge sender lines with following content
 				const mergedItems: string[] = [];
 				// Match: 我 2026-06-19 17:34  OR  我 2026-6-19 下午5:34
-				const senderRe = /^(.+?)\s+(\d{4}-\d{1,2}-\d{1,2}\s+(?:上午|下午|凌晨|中午)?\s*\d{1,2}:\d{2})/;
 				for (let k = 0; k < cardLines.length; k++) {
-					const sm = cardLines[k].match(senderRe);
-					if (sm && k + 1 < cardLines.length && !senderRe.test(cardLines[k + 1])) {
+					const sm = cardLines[k].match(FORWARD_SENDER_RE);
+					if (sm && k + 1 < cardLines.length && !FORWARD_SENDER_RE.test(cardLines[k + 1])) {
 						const senderName = sm[1];
 						const timeStr = sm[2];
 						mergedItems.push(senderName + '|' + timeStr + ': ' + cardLines[k + 1]);

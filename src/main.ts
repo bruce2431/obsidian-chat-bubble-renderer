@@ -5,11 +5,12 @@ import {
 	Notice,
 } from 'obsidian';
 import { DEFAULT_SETTINGS, ChatBubbleSettings, ChatBubbleSettingTab } from './settings';
-import { renderChatLog, FileMeta } from './chat-view';
+import { renderChatLog, FileMeta, setupChatBubbleEvents } from './chat-view';
 
 export default class ChatBubblePlugin extends Plugin {
 	settings!: ChatBubbleSettings;
 	private rendering = false;
+	private nameMap: Map<string, TFile> = new Map();
 
 	async onload() {
 		await this.loadSettings();
@@ -42,6 +43,21 @@ export default class ChatBubblePlugin extends Plugin {
 		);
 
 		this.addSettingTab(new ChatBubbleSettingTab(this.app, this));
+
+		// Cache vault file name→TFile mapping, kept in sync via events
+		this.rebuildNameMap();
+		this.registerEvent(this.app.vault.on('create', (file) => {
+			if (file instanceof TFile) this.nameMap.set(file.name, file);
+		}));
+		this.registerEvent(this.app.vault.on('delete', (file) => {
+			if (file instanceof TFile) this.nameMap.delete(file.name);
+		}));
+		this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
+			if (file instanceof TFile) {
+				this.nameMap.delete(oldPath.split('/').pop() || '');
+				this.nameMap.set(file.name, file);
+			}
+		}));
 	}
 
 		autoRenderIfTagged() {
@@ -107,12 +123,13 @@ export default class ChatBubblePlugin extends Plugin {
 				this.closeBubbles();
 
 				const overlay = view.containerEl.createDiv({ cls: 'chat-bubble-overlay' });
-				const contentEl = overlay.createDiv({ cls: 'chat-bubble-content' });
-				const parser = new DOMParser();
-				const chatDoc = parser.parseFromString(chatHtml, 'text/html');
-				while (chatDoc.body.firstChild) {
-					contentEl.appendChild(chatDoc.body.firstChild);
-				}
+					const contentEl = overlay.createDiv({ cls: 'chat-bubble-content' });
+					const parser = new DOMParser();
+					const chatDoc = parser.parseFromString(chatHtml, 'text/html');
+					while (chatDoc.body.firstChild) {
+						contentEl.appendChild(chatDoc.body.firstChild);
+					}
+					setupChatBubbleEvents(contentEl);
 			} finally {
 				this.rendering = false;
 			}
@@ -125,9 +142,12 @@ export default class ChatBubblePlugin extends Plugin {
 	onunload() { this.closeBubbles(); }
 
 	buildNameMap(): Map<string, TFile> {
-		const map = new Map<string, TFile>();
-		for (const f of this.app.vault.getFiles()) map.set(f.name, f);
-		return map;
+		return this.nameMap;
+	}
+
+	private rebuildNameMap() {
+		this.nameMap.clear();
+		for (const f of this.app.vault.getFiles()) this.nameMap.set(f.name, f);
 	}
 
 		/**
@@ -160,16 +180,16 @@ export default class ChatBubblePlugin extends Plugin {
 
 		/**
 		 * Replace ![[file.ext]] with:
-	 *   - images: ![[RESOLVED:app://...]] (resource URI works for <img>)
-	 *   - audio/video: ![[RESOLVED:data:audio/...;base64,...]] (base64 data URI)
-	 */
+		 *   - audio: ![[RESOLVED:data:audio/...;base64,...]] (base64 data URI)
+		 *   - images/video/other: ![[RESOLVED:app://...]] (resource URI)
+		 * Uses single-pass replacement via Map lookup.
+		 */
 	async resolveMediaLinks(content: string, nameMap: Map<string, TFile>): Promise<string> {
 		const audioExts = ['mp3', 'm4a', 'wav', 'ogg', 'aac', 'amr', 'silk'];
-		const videoExts = ['mp4', 'webm', 'mov'];
-
-		const replacements: { pattern: string; replacement: string }[] = [];
-
 		const re = /!\[\[(.+?)\]\]/g;
+
+		// Phase 1: collect all patterns and their async replacements
+		const pending: Promise<{ pattern: string; replacement: string }>[] = [];
 		let m: RegExpExecArray | null;
 		while ((m = re.exec(content)) !== null) {
 			const linktext = m[1];
@@ -177,35 +197,34 @@ export default class ChatBubblePlugin extends Plugin {
 			if (!file) continue;
 
 			const ext = file.extension.toLowerCase();
+			const pattern = m[0];
 
-			if (audioExts.includes(ext) || videoExts.includes(ext)) {
-				try {
-					const buf = await this.app.vault.readBinary(file);
-					const mime = ext === 'mp3' ? 'audio/mpeg' :
-						ext === 'm4a' ? 'audio/mp4' :
-						ext === 'mp4' ? 'video/mp4' :
-						ext === 'webm' ? 'video/webm' :
-							`${audioExts.includes(ext) ? 'audio' : 'video'}/${ext}`;
-					const b64 = this.arrayBufferToBase64(buf);
-					const dataUri = `data:${mime};base64,${b64}`;
-					replacements.push({ pattern: m[0], replacement: `![[RESOLVED:${dataUri}]]` });
-				} catch {
-					// Fallback to resource path
-					replacements.push({ pattern: m[0], replacement: `![[RESOLVED:${this.app.vault.getResourcePath(file)}]]` });
-				}
+			if (audioExts.includes(ext)) {
+				pending.push((async () => {
+					try {
+						const buf = await this.app.vault.readBinary(file);
+						const mime = ext === 'mp3' ? 'audio/mpeg' :
+							ext === 'm4a' ? 'audio/mp4' : `audio/${ext}`;
+						const b64 = this.arrayBufferToBase64(buf);
+						return { pattern, replacement: `![[RESOLVED:data:${mime};base64,${b64}]]` };
+					} catch {
+						return { pattern, replacement: `![[RESOLVED:${this.app.vault.getResourcePath(file)}]]` };
+					}
+				})());
 			} else {
-				replacements.push({ pattern: m[0], replacement: `![[RESOLVED:${this.app.vault.getResourcePath(file)}]]` });
+				// Images, video, documents — use resource path
+				pending.push(Promise.resolve({ pattern, replacement: `![[RESOLVED:${this.app.vault.getResourcePath(file)}]]` }));
 			}
 		}
 
-		let out = content;
-		for (const r of replacements) {
-			out = out.replace(r.pattern, r.replacement);
-		}
-		return out;
+		// Phase 2: resolve all async work, then single-pass replace
+		const replacements = await Promise.all(pending);
+		const replaceMap = new Map<string, string>();
+		for (const r of replacements) replaceMap.set(r.pattern, r.replacement);
+		return content.replace(/!\[\[.+?\]\]/g, (match) => replaceMap.get(match) || match);
 	}
 
-arrayBufferToBase64(buffer: ArrayBuffer): string {
+	arrayBufferToBase64(buffer: ArrayBuffer): string {
 		const bytes = new Uint8Array(buffer);
 		const CHUNK = 4096;
 		const parts: string[] = [];

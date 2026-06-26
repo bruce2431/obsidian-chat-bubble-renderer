@@ -4,11 +4,6 @@
  * 适用于 Obsidian 中带有 #聊天记录 标签的 Markdown 文件
  */
 
-/* ── 容器 ── */
-.chat-bubble-container {
-  padding: 16px 0;
-}
-
 /* ── 前言（标签/注释） ── */
 .chat-preamble {
   margin-bottom: 16px;
@@ -136,7 +131,7 @@
   background: #95ec69;
   color: #000;
   border-bottom-right-radius: 4px;
-  float: right;
+  margin-left: auto;
 }
 .chat-audio-msg.other {
   background: #f2f3f5;
@@ -369,13 +364,6 @@
   border-bottom: none;
 }
 
-.chat-forward-card .forward-more {
-  font-size: 11px;
-  color: var(--text-accent);
-  padding: 4px 0;
-  text-align: center;
-}
-
 .chat-forward-card .forward-expand {
   font-size: 12px;
   color: var(--text-accent);
@@ -429,28 +417,6 @@
   overflow: hidden;
 }
 
-/* ── 弹窗关闭按钮 ── */
-.chat-forward-modal-close {
-  position: absolute;
-  top: 10px;
-  right: 12px;
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  color: var(--text-muted);
-  cursor: pointer;
-  border-radius: 50%;
-  transition: background 0.15s;
-  z-index: 1;
-}
-
-.chat-forward-modal-close:hover {
-  background: var(--background-modifier-hover);
-}
-
 /* ── 弹窗内标题 ── */
 .forward-detail-title {
   font-size: 15px;
@@ -480,11 +446,6 @@
 .chat-msg.system {
   align-self: center;
   max-width: 90%;
-}
-
-/* ── 纯媒体消息：无 meta 间距 ── */
-.chat-msg.chat-media-only .chat-meta {
-  display: none;
 }
 
 .chat-system-tip {
@@ -520,28 +481,6 @@
   overflow-y: auto;
   box-sizing: border-box;
   background: var(--background-primary);
-}
-
-/* ── 关闭按钮 ── */
-.chat-bubble-close {
-  position: absolute;
-  top: 16px;
-  right: 20px;
-  z-index: 101;
-  font-size: 22px;
-  color: var(--text-muted);
-  cursor: pointer;
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  transition: background 0.15s;
-}
-
-.chat-bubble-close:hover {
-  background: var(--background-modifier-hover);
 }
 
 /* ── 气泡内容区域 ── */
