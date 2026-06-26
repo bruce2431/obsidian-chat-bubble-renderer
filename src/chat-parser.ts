@@ -33,10 +33,20 @@ export interface QuoteReply {
 	reply: string;
 }
 
+export interface ForwardItem {
+	sender: string;
+	time: string;
+	content: string;
+}
+
+export interface ForwardPlainItem {
+	plain: string;
+}
+
 export interface MergeForward {
 	type: 'merge-forward';
 	title: string;
-	items: string[];
+	items: (ForwardItem | ForwardPlainItem)[];
 }
 
 export interface ParseResult {
@@ -100,17 +110,15 @@ export function parseChatLog(markdown: string): ParseResult {
 					j++;
 				}
 				// Merge sender lines with following content
-				const mergedItems: string[] = [];
+				const mergedItems: (ForwardItem | ForwardPlainItem)[] = [];
 				// Match: 我 2026-06-19 17:34  OR  我 2026-6-19 下午5:34
 				for (let k = 0; k < cardLines.length; k++) {
 					const sm = cardLines[k].match(FORWARD_SENDER_RE);
 					if (sm && k + 1 < cardLines.length && !FORWARD_SENDER_RE.test(cardLines[k + 1])) {
-						const senderName = sm[1];
-						const timeStr = sm[2];
-						mergedItems.push(senderName + '|' + timeStr + ': ' + cardLines[k + 1]);
+						mergedItems.push({ sender: sm[1], time: sm[2], content: cardLines[k + 1] });
 						k++;
 					} else {
-						mergedItems.push(cardLines[k]);
+						mergedItems.push({ plain: cardLines[k] });
 					}
 				}
 				currentMsg.body.push({ type: 'merge-forward', title, items: mergedItems });

@@ -9,17 +9,20 @@
  * 不在 HTML 中嵌入 onclick — 安全且可维护。
  */
 
-import { parseChatLog, MergeForward } from './chat-parser';
+import { parseChatLog, MergeForward, ForwardItem, ForwardPlainItem } from './chat-parser';
 
 const NL = String.fromCharCode(10);
 
 /** 系统消息正则 — 匹配则渲染为居中浅灰系统提示 */
 const SYSTEM_MSG_RE = /撤回了一条消息|拍了拍|加入了群聊|移出了群聊|修改群名为|被管理员|已成为新群主|开启了朋友验证|已经通过你的朋友验证/;
 
-/** 合并转发内 sender+timestamp 解析 */
-const FORWARD_SENDER_RE = /^(.+?)\s+(\d{4}-\d{1,2}-\d{1,2}\s+(?:上午|下午|凌晨|中午)?\s*\d{1,2}:\d{2})/;
-/** 合并转发项解析: senderName|timeStr: content */
-const FORWARD_ITEM_RE = /^(.+?)\|(\d{4}-\d{1,2}-\d{1,2}\s+(?:上午|下午|凌晨|中午)?\s*\d{1,2}:\d{2}): (.+)/;
+/** 扩展名常量 — 统一引用，避免各处列表不一致 */
+const AUDIO_EXTS = ['mp3', 'm4a', 'wav', 'ogg', 'aac', 'amr', 'silk'];
+const VIDEO_EXTS = ['mp4', 'webm', 'mov'];
+const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'];
+const FILE_EXTS = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'zip', 'rar', '7z'];
+
+/** 合并转发项解析已移至 chat-parser.ts — 直接消费结构化 ForwardItem */
 
 /** 文件附件元数据（由 main.ts 传入） */
 export interface FileMeta {
@@ -69,6 +72,19 @@ export function setupChatBubbleEvents(container: HTMLElement) {
 			}
 		}
 	});
+
+	// Update voice bubble duration when audio metadata loads
+	container.addEventListener('loadedmetadata', (e) => {
+		const audio = e.target as HTMLAudioElement;
+		if (audio.tagName !== 'AUDIO') return;
+		const wrapper = audio.closest('.chat-audio-msg') as HTMLElement | null;
+		if (!wrapper) return;
+		const dur = Math.ceil(audio.duration);
+		const durEl = wrapper.querySelector('.chat-audio-dur');
+		const textEl = wrapper.querySelector('.chat-audio-text');
+		if (durEl) durEl.textContent = dur + '"';
+		if (textEl) textEl.textContent = '语音消息 ';
+	}, true); // capture — 'loadedmetadata' doesn't bubble
 }
 
 function openMediaOverlay(type: 'img' | 'video', uri: string) {
@@ -126,6 +142,9 @@ function openForwardOverlay(container: HTMLElement, templateId: string) {
 	modal.appendChild(clone);
 	overlay.appendChild(modal);
 	document.body.appendChild(overlay);
+
+	// Re-bind event delegation on the modal so media/PDF clicks inside the popup work
+	setupChatBubbleEvents(modal);
 }
 
 // ────────────────────────────────────
@@ -148,7 +167,7 @@ export function renderChatLog(markdown: string, fileMetas?: FileMeta[], selfName
 	const parts: string[] = [];
 
 	if (preamble) {
-		parts.push(`<div class="chat-preamble">${escapeHtml(preamble.replace(/\n/g, '<br>'))}</div>`);
+		parts.push(`<div class="chat-preamble">${escapeHtml(preamble).replace(/\n/g, '<br>')}</div>`);
 	}
 
 	if (messages.length > 0) {
@@ -243,7 +262,7 @@ function isAudioMedia(text: string): boolean {
 	const trimmed = text.trim();
 	if (!/^!\[\[.+?\]\]$/.test(trimmed)) return false;
 	if (trimmed.includes('data:audio/')) return true;
-	return /\.(mp3|m4a|wav|ogg|aac|amr|silk)\b/i.test(trimmed);
+	return new RegExp(`\\.(${AUDIO_EXTS.join('|')})\\b`, 'i').test(trimmed);
 }
 
 /** Render audio as a WeChat-style voice bubble — interaction via event delegation */
@@ -252,7 +271,7 @@ function renderAudioBubble(text: string, side: string): string {
 	const resolved = match?.[1] || '';
 	const uri = resolved.startsWith('RESOLVED:') ? resolved.slice(9) : resolved;
 	const uid = 'au-' + Math.random().toString(36).slice(2, 8);
-	return `<div class="chat-audio-msg ${side}" data-action="toggle-audio" data-audio-id="${uid}" style="cursor:pointer"><span class="chat-audio-icon">🔊</span><span class="chat-audio-text">语音消息</span><span class="chat-audio-dur"></span><audio id="${uid}" src="${uri}" hidden preload="metadata" onloadedmetadata="var d=Math.ceil(this.duration);var p=this.closest('.chat-audio-msg');p.querySelector('.chat-audio-dur').textContent=d+'&quot;';p.querySelector('.chat-audio-text').textContent='语音消息 '"></audio></div>`;
+	return `<div class="chat-audio-msg ${side}" data-action="toggle-audio" data-audio-id="${uid}" style="cursor:pointer"><span class="chat-audio-icon">🔊</span><span class="chat-audio-text">语音消息</span><span class="chat-audio-dur"></span><audio id="${uid}" src="${uri}" hidden preload="metadata"></audio></div>`;
 }
 
 /** Returns true if the text is purely a media reference (no surrounding text — images/video only, audio handled separately) */
@@ -261,10 +280,10 @@ function isMediaOnly(text: string): boolean {
 	if (!/^!\[\[.+?\]\]$/.test(trimmed)) return false;
 	if (trimmed.includes('RESOLVED:')) {
 		if (trimmed.includes('data:video/')) return true;
-		const mediaExts = /\.(png|jpe?g|gif|webp|bmp|svg|mp4|webm|mov|emoj)/i;
+		const mediaExts = new RegExp(`\\.(${[...IMAGE_EXTS, ...VIDEO_EXTS, 'emoj'].join('|')})`, 'i');
 		return mediaExts.test(trimmed);
 	}
-	const mediaExts = /\.(png|jpe?g|gif|webp|bmp|svg|mp4|webm|mov|emoj)\b/i;
+	const mediaExts = new RegExp(`\\.(${[...IMAGE_EXTS, ...VIDEO_EXTS, 'emoj'].join('|')})\\b`, 'i');
 	return mediaExts.test(trimmed);
 }
 
@@ -272,8 +291,7 @@ function isMediaOnly(text: string): boolean {
 function isFileAttachment(text: string): boolean {
 	const trimmed = text.trim();
 	if (!/^!\[\[.+?\]\]$/.test(trimmed)) return false;
-	const fileExts = /\.(pdf|docx?|xlsx?|pptx?|txt|zip|rar|7z)\b/i;
-	return fileExts.test(trimmed);
+	return new RegExp(`\\.(${FILE_EXTS.join('|')})\\b`, 'i').test(trimmed);
 }
 
 type RenderedType = 'text' | 'media' | 'file' | 'system';
@@ -355,15 +373,25 @@ function renderPlainText(text: string): string {
 			if (uri.startsWith('data:video/')) {
 				return `<video controls preload="auto" src="${escapeAttr(uri)}" class="chat-bare-video" data-action="preview-media" data-type="video" data-uri="${escapeAttr(uri)}" style="cursor:pointer" onerror="this.style.display='none'"></video>`;
 			}
+			// Resource URIs (app://...) — check extension for audio/video
+			if (!uri.startsWith('data:')) {
+				const ext = uri.split('?')[0].split('.').pop()?.toLowerCase() || '';
+				if (AUDIO_EXTS.includes(ext)) {
+					return `<audio controls preload="auto" src="${escapeAttr(uri)}" class="chat-bare-audio" onerror="this.style.display='none'"></audio>`;
+				}
+				if (VIDEO_EXTS.includes(ext)) {
+					return `<video controls preload="auto" src="${escapeAttr(uri)}" class="chat-bare-video" data-action="preview-media" data-type="video" data-uri="${escapeAttr(uri)}" style="cursor:pointer" onerror="this.style.display='none'"></video>`;
+				}
+			}
 			const width = w ? ` width="${w}"` : '';
 			return `<img src="${escapeAttr(uri)}" class="chat-bare-img"${width} loading="lazy" data-action="preview-media" data-type="img" data-uri="${escapeAttr(uri)}" style="cursor:pointer" onerror="this.style.display='none'">`;
 		}
 
 		const ext = file.split('.').pop()?.toLowerCase() || '';
-		if (['mp3', 'm4a', 'wav', 'ogg', 'aac'].includes(ext)) {
+		if (AUDIO_EXTS.includes(ext)) {
 			return `<audio controls preload="auto" src="${escapeAttr(safeEncodeURI(file))}" class="chat-bare-audio" onerror="this.style.display='none'"></audio>`;
 		}
-		if (['mp4', 'webm', 'mov'].includes(ext)) {
+		if (VIDEO_EXTS.includes(ext)) {
 			return `<video controls preload="auto" src="${escapeAttr(safeEncodeURI(file))}" class="chat-bare-video" data-action="preview-media" data-type="video" data-uri="${escapeAttr(safeEncodeURI(file))}" style="cursor:pointer" onerror="this.style.display='none'"></video>`;
 		}
 		const width = w ? ` width="${w}"` : '';
@@ -378,10 +406,10 @@ function renderQuoteBar(sender: string, quote: string): string {
 	const mediaMatch = quote.match(/!\[\[RESOLVED:(.+?)\]\]/);
 	if (mediaMatch) {
 		const resolved = mediaMatch[1];
-		const isVideo = resolved.startsWith('data:video/') || /\.(mp4|webm|mov)\b/i.test(resolved);
-		const isAudio = resolved.startsWith('data:audio/') || /\.(mp3|m4a|wav|ogg|aac|amr|silk)\b/i.test(resolved);
-		const isImage = resolved.startsWith('data:image/') || /\.(png|jpe?g|gif|webp|bmp)\b/i.test(resolved);
-		const isFile = /\.(pdf|docx?|xlsx?|pptx?|txt|zip|rar|7z)\b/i.test(resolved);
+		const isVideo = resolved.startsWith('data:video/') || new RegExp(`\\.(${VIDEO_EXTS.join('|')})\\b`, 'i').test(resolved);
+		const isAudio = resolved.startsWith('data:audio/') || new RegExp(`\\.(${AUDIO_EXTS.join('|')})\\b`, 'i').test(resolved);
+		const isImage = resolved.startsWith('data:image/') || new RegExp(`\\.(${IMAGE_EXTS.join('|')})\\b`, 'i').test(resolved);
+		const isFile = new RegExp(`\\.(${FILE_EXTS.join('|')})\\b`, 'i').test(resolved);
 
 		let preview = '';
 		if (isImage) {
@@ -413,9 +441,9 @@ function renderQuoteBar(sender: string, quote: string): string {
 	if (plainMatch) {
 		const filename = plainMatch[1];
 		const ext = filename.split('.').pop()?.toLowerCase() || '';
-		if (['mp4', 'webm', 'mov'].includes(ext)) return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}</span><span class="chat-quote-video-icon">▶</span></div>`;
-		if (['mp3', 'm4a', 'wav', 'ogg', 'aac'].includes(ext)) return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}</span><span class="chat-quote-audio-icon">🔊</span></div>`;
-		if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'].includes(ext)) return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}</span>[图片]</div>`;
+		if (VIDEO_EXTS.includes(ext)) return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}</span><span class="chat-quote-video-icon">▶</span></div>`;
+		if (AUDIO_EXTS.includes(ext)) return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}</span><span class="chat-quote-audio-icon">🔊</span></div>`;
+		if (IMAGE_EXTS.includes(ext)) return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}</span>[图片]</div>`;
 		const extUpper = (filename.split('.').pop() || '').toUpperCase();
 		return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}</span><span class="chat-quote-file"><span class="chat-quote-file-icon">${escapeHtml(extUpper)}</span>${escapeHtml(filename)}</span></div>`;
 	}
@@ -436,31 +464,28 @@ function renderMergeForward(part: MergeForward, metaMap: Map<string, FileMeta>, 
 	cardHtml += `<div id="${uid}" class="forward-detail-template" style="display:none">`;
 	cardHtml += `<div class="forward-detail-title">${escapeHtml(part.title)}</div>`;
 	for (const item of part.items) {
-		const fwdMatch = item.match(FORWARD_ITEM_RE);
-		if (fwdMatch) {
-			const sender = fwdMatch[1];
-			const time = fwdMatch[2];
-			const content = fwdMatch[3];
-			const isSelf = isSelfMessage(sender, selfNames);
-				const side = isSelf ? 'self' : 'other';
-			cardHtml += `<div class="forward-item ${side}"><span class="forward-sender">${escapeHtml(sender)} <span class="forward-time">${escapeHtml(time)}</span></span>`;
-
-			const sr = classifyAndRender(content, metaMap, 'forward');
-			if (sr.type === 'file') {
-				const raw = content.match(/!\[\[(.+?)\]\]/)?.[1] || '';
-				const uri = raw.startsWith('RESOLVED:') ? raw.slice(9).split('?')[0] : '';
-				const filename = raw.replace(/^RESOLVED:/, '').split('?')[0].split('/').pop() || raw;
-				const ext = (filename.split('.').pop() || '').toUpperCase();
-				cardHtml += `<div class="forward-media">${renderFileCardMini(ext, safeDecodeURI(filename), uri)}</div>`;
-			} else if (sr.type === 'media') {
-				cardHtml += `<div class="forward-media">${sr.html}</div>`;
-			} else {
-				cardHtml += `<div class="forward-bubble">${sr.html}</div>`;
-			}
-			cardHtml += '</div>';
-		} else {
-			cardHtml += `<div class="forward-item system"><span class="forward-plain">${escapeHtml(item)}</span></div>`;
+		if ('plain' in item) {
+			cardHtml += `<div class="forward-item system"><span class="forward-plain">${escapeHtml(item.plain)}</span></div>`;
+			continue;
 		}
+		const { sender, time, content } = item as ForwardItem;
+		const isSelf = isSelfMessage(sender, selfNames);
+		const side = isSelf ? 'self' : 'other';
+		cardHtml += `<div class="forward-item ${side}"><span class="forward-sender">${escapeHtml(sender)} <span class="forward-time">${escapeHtml(time)}</span></span>`;
+
+		const sr = classifyAndRender(content, metaMap, 'forward');
+		if (sr.type === 'file') {
+			const raw = content.match(/!\[\[(.+?)\]\]/)?.[1] || '';
+			const uri = raw.startsWith('RESOLVED:') ? raw.slice(9).split('?')[0] : '';
+			const filename = raw.replace(/^RESOLVED:/, '').split('?')[0].split('/').pop() || raw;
+			const ext = (filename.split('.').pop() || '').toUpperCase();
+			cardHtml += `<div class="forward-media">${renderFileCardMini(ext, safeDecodeURI(filename), uri)}</div>`;
+		} else if (sr.type === 'media') {
+			cardHtml += `<div class="forward-media">${sr.html}</div>`;
+		} else {
+			cardHtml += `<div class="forward-bubble">${sr.html}</div>`;
+		}
+		cardHtml += '</div>';
 	}
 	cardHtml += '</div>';
 

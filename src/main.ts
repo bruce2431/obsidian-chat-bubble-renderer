@@ -28,7 +28,17 @@ export default class ChatBubblePlugin extends Plugin {
 		});
 
 		this.registerDomEvent(activeDocument, 'keydown', (evt: KeyboardEvent) => {
-			if (evt.key === 'Escape') this.closeBubbles();
+			if (evt.key === 'Escape') {
+				// Close overlay modals first, then the bubble view itself
+				const modals = activeDocument.querySelectorAll(
+					'.chat-media-overlay, .chat-file-overlay, .chat-forward-overlay'
+				);
+				if (modals.length > 0) {
+					modals.forEach(el => el.remove());
+				} else {
+					this.closeBubbles();
+				}
+			}
 		});
 
 		// Auto-render on tab switch (with brief delay for metadata to load)
@@ -37,9 +47,13 @@ export default class ChatBubblePlugin extends Plugin {
 				setTimeout(() => this.autoRenderIfTagged(), 100);
 			})
 		);
-		// Catch source/preview mode toggle (Ctrl+E)
+		// Catch source/preview mode toggle (Ctrl+E) — debounced to avoid resize spam
+		let layoutTimer: ReturnType<typeof setTimeout> | null = null;
 		this.registerEvent(
-			this.app.workspace.on('layout-change', () => this.autoRenderIfTagged())
+			this.app.workspace.on('layout-change', () => {
+				if (layoutTimer) clearTimeout(layoutTimer);
+				layoutTimer = setTimeout(() => this.autoRenderIfTagged(), 200);
+			})
 		);
 
 		this.addSettingTab(new ChatBubbleSettingTab(this.app, this));
@@ -60,6 +74,15 @@ export default class ChatBubblePlugin extends Plugin {
 		}));
 	}
 
+		/** Check if a file has the #聊天记录 frontmatter tag */
+		private isChatLog(file: TFile): boolean {
+			const cache = this.app.metadataCache.getFileCache(file);
+			const tags = cache?.frontmatter?.tags as string[] | string | undefined;
+			if (!tags) return false;
+			const tagArray = Array.isArray(tags) ? tags : [tags];
+			return tagArray.some((t: string) => t.includes('聊天记录'));
+		}
+
 		autoRenderIfTagged() {
 			const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 			if (!view) { this.closeBubbles(); return; }
@@ -73,40 +96,30 @@ export default class ChatBubblePlugin extends Plugin {
 			// Already rendered — skip
 			if (view.containerEl.querySelector('.chat-bubble-overlay')) return;
 
-			const cache = this.app.metadataCache.getFileCache(file);
-			const tags = cache?.frontmatter?.tags as string[] | undefined;
-			if (!tags) { this.closeBubbles(); return; }
-
-			const tagArray = Array.isArray(tags) ? tags : [tags];
-			if (!tagArray.some((t: string) => t.includes('聊天记录'))) { this.closeBubbles(); return; }
+			if (!this.isChatLog(file)) { this.closeBubbles(); return; }
 
 			this.doRender(view);
 		}
 
-	async renderCurrentView() {
-		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-		if (!view) { new Notice('请在 Markdown 文件中使用'); return; }
+		async renderCurrentView() {
+			const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+			if (!view) { new Notice('请在 Markdown 文件中使用'); return; }
 
-		const file = view.file;
-		if (!(file instanceof TFile)) return;
+			const file = view.file;
+			if (!(file instanceof TFile)) return;
 
-		const cache = this.app.metadataCache.getFileCache(file);
-		const tags = cache?.frontmatter?.tags as string[] | undefined;
-		if (!tags) { new Notice('此文件没有 #聊天记录 标签'); return; }
+			if (!this.isChatLog(file)) {
+				new Notice('此文件没有 #聊天记录 标签'); return;
+			}
 
-		const tagArray = Array.isArray(tags) ? tags : [tags];
-		if (!tagArray.some((t: string) => t.includes('聊天记录'))) {
-			new Notice('此文件没有 #聊天记录 标签'); return;
+			if (view.getMode() !== 'preview') {
+				new Notice('请先切换到阅读视图（Ctrl+E）'); return;
+			}
+
+			new Notice('正在渲染聊天气泡...');
+			await this.doRender(view);
+			new Notice('聊天气泡已开启 | Esc 关闭');
 		}
-
-		if (view.getMode() !== 'preview') {
-			new Notice('请先切换到阅读视图（Ctrl+E）'); return;
-		}
-
-		new Notice('正在渲染聊天气泡...');
-		this.doRender(view);
-		new Notice('聊天气泡已开启 | Esc 关闭');
-	}
 
 		async doRender(view: MarkdownView) {
 			if (this.rendering) return;
@@ -115,10 +128,9 @@ export default class ChatBubblePlugin extends Plugin {
 				const content = view.data;
 				if (!content) return;
 
-				const nameMap = this.buildNameMap();
-				const fileMetas = await this.buildFileMetas(content, nameMap);
-				const resolved = await this.resolveMediaLinks(content, nameMap);
-				const chatHtml = renderChatLog(resolved, fileMetas, this.settings.selfNames);
+				const nameMap = this.nameMap;
+				const { resolvedContent, fileMetas } = await this.processContent(content, nameMap);
+				const chatHtml = renderChatLog(resolvedContent, fileMetas, this.settings.selfNames);
 
 				this.closeBubbles();
 
@@ -141,90 +153,74 @@ export default class ChatBubblePlugin extends Plugin {
 
 	onunload() { this.closeBubbles(); }
 
-	buildNameMap(): Map<string, TFile> {
-		return this.nameMap;
-	}
-
 	private rebuildNameMap() {
 		this.nameMap.clear();
 		for (const f of this.app.vault.getFiles()) this.nameMap.set(f.name, f);
 	}
 
 		/**
-		 * Build FileMeta[] for document attachments (PDF, DOC, etc.)
+		 * Single-pass: collect file attachment metas + resolve all ![[file]] links
+		 * (audio→base64 data URI, images/video/docs→resource URI).
 		 */
-		async buildFileMetas(content: string, nameMap: Map<string, TFile>): Promise<FileMeta[]> {
-			const metas: FileMeta[] = [];
+		async processContent(content: string, nameMap: Map<string, TFile>): Promise<{ resolvedContent: string; fileMetas: FileMeta[] }> {
+			const audioExts = ['mp3', 'm4a', 'wav', 'ogg', 'aac', 'amr', 'silk'];
 			const fileExts = /\.(pdf|docx?|xlsx?|pptx?|txt|zip|rar|7z)\b/i;
 			const re = /!\[\[(.+?)\]\]/g;
+
+			const metas: FileMeta[] = [];
+			const pending: Promise<{ pattern: string; replacement: string }>[] = [];
 			let m: RegExpExecArray | null;
+
 			while ((m = re.exec(content)) !== null) {
 				const linktext = m[1];
-				if (!fileExts.test(linktext)) continue;
-
 				const file = nameMap.get(linktext);
-					if (!file) continue;
+				if (!file) continue;
 
-				const size = this.formatFileSize(file.stat.size);
-				const url = this.app.vault.getResourcePath(file);
-				metas.push({ name: linktext, size, url });
+				const pattern = m[0];
+
+				// Collect file attachment metadata (PDF, DOC, etc.)
+				if (fileExts.test(linktext)) {
+					const size = this.formatFileSize(file.stat.size);
+					const url = this.app.vault.getResourcePath(file);
+					metas.push({ name: linktext, size, url });
+				}
+
+				const ext = file.extension.toLowerCase();
+
+				if (audioExts.includes(ext)) {
+					pending.push((async () => {
+						try {
+							const buf = await this.app.vault.readBinary(file);
+							const mime = ext === 'mp3' ? 'audio/mpeg' :
+								ext === 'm4a' ? 'audio/mp4' : `audio/${ext}`;
+							const b64 = this.arrayBufferToBase64(buf);
+							return { pattern, replacement: `![[RESOLVED:data:${mime};base64,${b64}]]` };
+						} catch {
+							return { pattern, replacement: `![[RESOLVED:${this.app.vault.getResourcePath(file)}]]` };
+						}
+					})());
+				} else {
+					// Images, video, documents — use resource path
+					pending.push(Promise.resolve({ pattern, replacement: `![[RESOLVED:${this.app.vault.getResourcePath(file)}]]` }));
+				}
 			}
-			return metas;
-		}
 
-		formatFileSize(bytes: number): string {
+			// Resolve all async work, then single-pass replace
+			const replacements = await Promise.all(pending);
+			const replaceMap = new Map<string, string>();
+			for (const r of replacements) replaceMap.set(r.pattern, r.replacement);
+			const resolvedContent = content.replace(/!\[\[.+?\]\]/g, (match) => replaceMap.get(match) || match);
+
+			return { resolvedContent, fileMetas: metas };
+			}
+
+			formatFileSize(bytes: number): string {
 			if (bytes < 1024) return bytes + 'B';
 			if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + 'K';
 			return (bytes / (1024 * 1024)).toFixed(1) + 'M';
-		}
-
-		/**
-		 * Replace ![[file.ext]] with:
-		 *   - audio: ![[RESOLVED:data:audio/...;base64,...]] (base64 data URI)
-		 *   - images/video/other: ![[RESOLVED:app://...]] (resource URI)
-		 * Uses single-pass replacement via Map lookup.
-		 */
-	async resolveMediaLinks(content: string, nameMap: Map<string, TFile>): Promise<string> {
-		const audioExts = ['mp3', 'm4a', 'wav', 'ogg', 'aac', 'amr', 'silk'];
-		const re = /!\[\[(.+?)\]\]/g;
-
-		// Phase 1: collect all patterns and their async replacements
-		const pending: Promise<{ pattern: string; replacement: string }>[] = [];
-		let m: RegExpExecArray | null;
-		while ((m = re.exec(content)) !== null) {
-			const linktext = m[1];
-			const file = nameMap.get(linktext);
-			if (!file) continue;
-
-			const ext = file.extension.toLowerCase();
-			const pattern = m[0];
-
-			if (audioExts.includes(ext)) {
-				pending.push((async () => {
-					try {
-						const buf = await this.app.vault.readBinary(file);
-						const mime = ext === 'mp3' ? 'audio/mpeg' :
-							ext === 'm4a' ? 'audio/mp4' : `audio/${ext}`;
-						const b64 = this.arrayBufferToBase64(buf);
-						return { pattern, replacement: `![[RESOLVED:data:${mime};base64,${b64}]]` };
-					} catch {
-						return { pattern, replacement: `![[RESOLVED:${this.app.vault.getResourcePath(file)}]]` };
-					}
-				})());
-			} else {
-				// Images, video, documents — use resource path
-				pending.push(Promise.resolve({ pattern, replacement: `![[RESOLVED:${this.app.vault.getResourcePath(file)}]]` }));
 			}
-		}
 
-		// Phase 2: resolve all async work, then single-pass replace
-		const replacements = await Promise.all(pending);
-		const replaceMap = new Map<string, string>();
-		for (const r of replacements) replaceMap.set(r.pattern, r.replacement);
-		return content.replace(/!\[\[.+?\]\]/g, (match) => replaceMap.get(match) || match);
-	}
-
-	arrayBufferToBase64(buffer: ArrayBuffer): string {
+			arrayBufferToBase64(buffer: ArrayBuffer): string {
 		const bytes = new Uint8Array(buffer);
 		const CHUNK = 4096;
 		const parts: string[] = [];

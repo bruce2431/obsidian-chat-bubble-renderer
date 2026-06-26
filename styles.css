@@ -145,36 +145,6 @@
   white-space: nowrap;
 }
 
-/* ── 气泡内媒体（有文字混排时） ── */
-.chat-msg .chat-img {
-  margin-top: 4px;
-}
-
-.chat-msg .chat-img img {
-  max-width: 200px;
-  max-height: 200px;
-  border-radius: 8px;
-  display: block;
-  object-fit: cover;
-  cursor: pointer;
-  transition: transform 0.15s ease;
-}
-
-.chat-msg .chat-img img:hover {
-  transform: scale(1.03);
-}
-
-/* ── 媒体消息（音频/视频） ── */
-.chat-msg .chat-media {
-  margin-top: 4px;
-}
-
-.chat-msg .chat-media audio,
-.chat-msg .chat-media video {
-  border-radius: 8px;
-  max-width: 100%;
-}
-
 /* ── 引用回复（气泡下方，独立换行） ── */
 .chat-quote-bar {
   font-size: 12px;
@@ -435,10 +405,10 @@
 }
 
 /* ── 通配适配：在阅读视图中禁用默认 Markdown 渲染 ── */
-.chat-bubble-container h1,
-.chat-bubble-container h2,
-.chat-bubble-container h3,
-.chat-bubble-container h4 {
+.chat-bubble-overlay h1,
+.chat-bubble-overlay h2,
+.chat-bubble-overlay h3,
+.chat-bubble-overlay h4 {
   display: none;
 }
 
