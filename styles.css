@@ -64,7 +64,7 @@
 
 /* 对方气泡（左） */
 .chat-msg.other .chat-bubble {
-  background: #f2f3f5;
+  background: var(--background-secondary);
   border-bottom-left-radius: 4px;
 }
 
@@ -102,6 +102,7 @@
   border-radius: 8px;
   display: block;
   object-fit: cover;
+  cursor: pointer;
 }
 
 .chat-bare-audio {
@@ -114,6 +115,7 @@
   max-width: 280px;
   max-height: 200px;
   border-radius: 8px;
+  cursor: pointer;
 }
 
 /* ── 语音消息气泡（微信风格） ── */
@@ -126,6 +128,7 @@
   font-size: 14px;
   width: fit-content;
   max-width: 100%;
+  cursor: pointer;
 }
 .chat-audio-msg.self {
   background: #95ec69;
@@ -134,7 +137,7 @@
   margin-left: auto;
 }
 .chat-audio-msg.other {
-  background: #f2f3f5;
+  background: var(--background-secondary);
   border-bottom-left-radius: 4px;
 }
 .chat-audio-icon {
@@ -166,6 +169,7 @@
   border-radius: 4px;
   object-fit: cover;
   flex-shrink: 0;
+  cursor: pointer;
 }
 .chat-quote-video-icon {
   width: 28px;
@@ -209,12 +213,14 @@
   object-fit: cover;
   flex-shrink: 0;
   background: var(--background-modifier-border);
+  cursor: pointer;
 }
 .chat-quote-file {
   display: flex;
   align-items: center;
   gap: 4px;
   min-width: 0;
+  cursor: pointer;
 }
 .chat-quote-file-icon {
   background: #e74c3c;
