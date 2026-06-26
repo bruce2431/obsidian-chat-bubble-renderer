@@ -41,9 +41,11 @@ export class ChatBubbleSettingTab extends PluginSettingTab {
 				btn
 					.setButtonText('Reset')
 					.onClick(async () => {
-						this.plugin.settings = Object.assign({}, DEFAULT_SETTINGS);
+						this.plugin.settings.selfNames = [...DEFAULT_SETTINGS.selfNames];
 						await this.plugin.saveSettings();
-						this.display();
+						// Re-render text field with defaults (avoids deprecated this.display())
+						const textComponent = this.containerEl.querySelector('input[type="text"]') as HTMLInputElement;
+						if (textComponent) textComponent.value = DEFAULT_SETTINGS.selfNames.join(', ');
 					}),
 			);
 	}

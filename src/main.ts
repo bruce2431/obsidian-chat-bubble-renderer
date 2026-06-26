@@ -44,32 +44,39 @@ export default class ChatBubblePlugin extends Plugin {
 		// Auto-render on tab switch (with brief delay for metadata to load)
 		this.registerEvent(
 			this.app.workspace.on('active-leaf-change', () => {
-				setTimeout(() => this.autoRenderIfTagged(), 100);
+				window.setTimeout(() => this.autoRenderIfTagged(), 100);
 			})
 		);
 		// Catch source/preview mode toggle (Ctrl+E) — debounced to avoid resize spam
-		let layoutTimer: ReturnType<typeof setTimeout> | null = null;
+		let layoutTimer: number | null = null;
 		this.registerEvent(
 			this.app.workspace.on('layout-change', () => {
-				if (layoutTimer) clearTimeout(layoutTimer);
-				layoutTimer = setTimeout(() => this.autoRenderIfTagged(), 200);
+				if (layoutTimer) window.clearTimeout(layoutTimer);
+				layoutTimer = window.setTimeout(() => this.autoRenderIfTagged(), 200);
 			})
 		);
 
 		this.addSettingTab(new ChatBubbleSettingTab(this.app, this));
 
 		// Cache vault file name→TFile mapping, kept in sync via events
+		// Uses first-registered semantics — duplicate filenames won't overwrite
 		this.rebuildNameMap();
 		this.registerEvent(this.app.vault.on('create', (file) => {
-			if (file instanceof TFile) this.nameMap.set(file.name, file);
+			if (file instanceof TFile && !this.nameMap.has(file.name)) this.nameMap.set(file.name, file);
 		}));
 		this.registerEvent(this.app.vault.on('delete', (file) => {
-			if (file instanceof TFile) this.nameMap.delete(file.name);
+			if (file instanceof TFile) {
+				// Only remove if no other file with the same name exists
+				if (!this.app.vault.getFiles().some(f => f.name === file.name && f.path !== file.path)) {
+					this.nameMap.delete(file.name);
+				}
+			}
 		}));
 		this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
 			if (file instanceof TFile) {
-				this.nameMap.delete(oldPath.split('/').pop() || '');
-				this.nameMap.set(file.name, file);
+				const oldName = oldPath.split('/').pop() || '';
+				this.nameMap.delete(oldName);
+				if (!this.nameMap.has(file.name)) this.nameMap.set(file.name, file);
 			}
 		}));
 	}
@@ -98,7 +105,7 @@ export default class ChatBubblePlugin extends Plugin {
 
 			if (!this.isChatLog(file)) { this.closeBubbles(); return; }
 
-			this.doRender(view);
+		void this.doRender(view);
 		}
 
 		async renderCurrentView() {
@@ -155,7 +162,10 @@ export default class ChatBubblePlugin extends Plugin {
 
 	private rebuildNameMap() {
 		this.nameMap.clear();
-		for (const f of this.app.vault.getFiles()) this.nameMap.set(f.name, f);
+		for (const f of this.app.vault.getFiles()) {
+			// First file with a given name wins — duplicates skipped
+			if (!this.nameMap.has(f.name)) this.nameMap.set(f.name, f);
+		}
 	}
 
 		/**
@@ -163,56 +173,61 @@ export default class ChatBubblePlugin extends Plugin {
 		 * (audio→base64 data URI, images/video/docs→resource URI).
 		 */
 		async processContent(content: string, nameMap: Map<string, TFile>): Promise<{ resolvedContent: string; fileMetas: FileMeta[] }> {
-			const audioExts = ['mp3', 'm4a', 'wav', 'ogg', 'aac', 'amr', 'silk'];
-			const fileExts = /\.(pdf|docx?|xlsx?|pptx?|txt|zip|rar|7z)\b/i;
-			const re = /!\[\[(.+?)\]\]/g;
+				const audioExts = ['mp3', 'm4a', 'wav', 'ogg', 'aac', 'amr', 'silk'];
+				const fileExts = /\.(pdf|docx?|xlsx?|pptx?|txt|zip|rar|7z)\b/i;
+				const re = /!\[\[(.+?)\]\]/g;
 
-			const metas: FileMeta[] = [];
-			const pending: Promise<{ pattern: string; replacement: string }>[] = [];
-			let m: RegExpExecArray | null;
+				const metas: FileMeta[] = [];
+				interface Segment { index: number; pattern: string; pending: Promise<string> }
+				const segments: Segment[] = [];
+				let m: RegExpExecArray | null;
 
-			while ((m = re.exec(content)) !== null) {
-				const linktext = m[1];
-				const file = nameMap.get(linktext);
-				if (!file) continue;
+				while ((m = re.exec(content)) !== null) {
+					const linktext = m[1];
+					const file = nameMap.get(linktext);
+					if (!file) continue;
 
-				const pattern = m[0];
+					const pattern = m[0];
+					const index = m.index;
 
-				// Collect file attachment metadata (PDF, DOC, etc.)
-				if (fileExts.test(linktext)) {
-					const size = this.formatFileSize(file.stat.size);
-					const url = this.app.vault.getResourcePath(file);
-					metas.push({ name: linktext, size, url });
+					// Collect file attachment metadata (PDF, DOC, etc.)
+					if (fileExts.test(linktext)) {
+						const size = this.formatFileSize(file.stat.size);
+						const url = this.app.vault.getResourcePath(file);
+						metas.push({ name: linktext, size, url });
+					}
+
+					const ext = file.extension.toLowerCase();
+
+					const pending: Promise<string> = audioExts.includes(ext)
+						? (async () => {
+							try {
+								const buf = await this.app.vault.readBinary(file);
+								const mime = ext === 'mp3' ? 'audio/mpeg' :
+									ext === 'm4a' ? 'audio/mp4' : `audio/${ext}`;
+								const b64 = this.arrayBufferToBase64(buf);
+								return `![[RESOLVED:data:${mime};base64,${b64}]]`;
+							} catch {
+								return `![[RESOLVED:${this.app.vault.getResourcePath(file)}]]`;
+							}
+						})()
+						: Promise.resolve(`![[RESOLVED:${this.app.vault.getResourcePath(file)}]]`);
+
+					segments.push({ index, pattern, pending });
 				}
 
-				const ext = file.extension.toLowerCase();
-
-				if (audioExts.includes(ext)) {
-					pending.push((async () => {
-						try {
-							const buf = await this.app.vault.readBinary(file);
-							const mime = ext === 'mp3' ? 'audio/mpeg' :
-								ext === 'm4a' ? 'audio/mp4' : `audio/${ext}`;
-							const b64 = this.arrayBufferToBase64(buf);
-							return { pattern, replacement: `![[RESOLVED:data:${mime};base64,${b64}]]` };
-						} catch {
-							return { pattern, replacement: `![[RESOLVED:${this.app.vault.getResourcePath(file)}]]` };
-						}
-					})());
-				} else {
-					// Images, video, documents — use resource path
-					pending.push(Promise.resolve({ pattern, replacement: `![[RESOLVED:${this.app.vault.getResourcePath(file)}]]` }));
+				// Await all async, then build result by slicing between match positions — no second regex pass
+				const resolved = await Promise.all(segments.map(s => s.pending.then(r => ({ index: s.index, pattern: s.pattern, replacement: r }))));
+				let resolvedContent = '';
+				let lastIdx = 0;
+				for (const r of resolved) {
+					resolvedContent += content.slice(lastIdx, r.index) + r.replacement;
+					lastIdx = r.index + r.pattern.length;
 				}
-			}
+				resolvedContent += content.slice(lastIdx);
 
-			// Resolve all async work, then single-pass replace
-			const replacements = await Promise.all(pending);
-			const replaceMap = new Map<string, string>();
-			for (const r of replacements) replaceMap.set(r.pattern, r.replacement);
-			const resolvedContent = content.replace(/!\[\[.+?\]\]/g, (match) => replaceMap.get(match) || match);
-
-			return { resolvedContent, fileMetas: metas };
-			}
+				return { resolvedContent, fileMetas: metas };
+				}
 
 			formatFileSize(bytes: number): string {
 			if (bytes < 1024) return bytes + 'B';
@@ -226,7 +241,11 @@ export default class ChatBubblePlugin extends Plugin {
 		const parts: string[] = [];
 		for (let i = 0; i < bytes.length; i += CHUNK) {
 			const chunk = bytes.subarray(i, i + CHUNK);
-			parts.push(String.fromCharCode.apply(null, chunk as unknown as number[]));
+			let chunkStr = '';
+			for (let j = 0; j < chunk.length; j++) {
+				chunkStr += String.fromCharCode(chunk[j]);
+			}
+			parts.push(chunkStr);
 		}
 		return btoa(parts.join(''));
 	}

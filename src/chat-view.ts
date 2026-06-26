@@ -9,7 +9,7 @@
  * 不在 HTML 中嵌入 onclick — 安全且可维护。
  */
 
-import { parseChatLog, MergeForward, ForwardItem, ForwardPlainItem } from './chat-parser';
+import { parseChatLog, MergeForward, ForwardItem } from './chat-parser';
 
 const NL = String.fromCharCode(10);
 
@@ -21,6 +21,15 @@ const AUDIO_EXTS = ['mp3', 'm4a', 'wav', 'ogg', 'aac', 'amr', 'silk'];
 const VIDEO_EXTS = ['mp4', 'webm', 'mov'];
 const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'];
 const FILE_EXTS = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'zip', 'rar', '7z'];
+
+/** 预编译正则 — 避免每条消息重复构造 */
+const AUDIO_EXT_RE = new RegExp(`\\.(${AUDIO_EXTS.join('|')})\\b`, 'i');
+const MEDIA_EXT_RE = new RegExp(`\\.(${[...IMAGE_EXTS, ...VIDEO_EXTS, 'emoj'].join('|')})\\b`, 'i');
+const MEDIA_EXT_NB_RE = new RegExp(`\\.(${[...IMAGE_EXTS, ...VIDEO_EXTS, 'emoj'].join('|')})`, 'i'); // no \b boundary for RESOLVED: URIs
+const FILE_EXT_RE = new RegExp(`\\.(${FILE_EXTS.join('|')})\\b`, 'i');
+const IMAGE_EXT_RE = new RegExp(`\\.(${IMAGE_EXTS.join('|')})\\b`, 'i');
+const VIDEO_EXT_RE = new RegExp(`\\.(${VIDEO_EXTS.join('|')})\\b`, 'i');
+const WIKILINK_ONLY_RE = /^!\[\[.+?\]\]$/;
 
 /** 合并转发项解析已移至 chat-parser.ts — 直接消费结构化 ForwardItem */
 
@@ -41,15 +50,17 @@ export interface FileMeta {
  */
 export function setupChatBubbleEvents(container: HTMLElement) {
 	container.addEventListener('click', (e) => {
-		const el = (e.target as HTMLElement).closest('[data-action]') as HTMLElement | null;
+		const el = (e.target as Element).closest('[data-action]') as HTMLElement | null;
 		if (!el) return;
 
 		const action = el.dataset.action!;
 
 		switch (action) {
 			case 'toggle-audio': {
-				const audio = container.querySelector(`#${el.dataset.audioId}`) as HTMLAudioElement | null;
-				if (audio) { audio.paused ? audio.play() : audio.pause(); }
+				const audio = container.querySelector<HTMLAudioElement>(`#${el.dataset.audioId}`);
+				if (audio) {
+					if (audio.paused) { void audio.play(); } else { void audio.pause(); }
+				}
 				return;
 			}
 			case 'preview-media': {
@@ -67,7 +78,7 @@ export function setupChatBubbleEvents(container: HTMLElement) {
 				return;
 			}
 			case 'play-audio': {
-				new Audio(el.dataset.uri!).play();
+				void new Audio(el.dataset.uri!).play();
 				return;
 			}
 		}
@@ -77,7 +88,7 @@ export function setupChatBubbleEvents(container: HTMLElement) {
 	container.addEventListener('loadedmetadata', (e) => {
 		const audio = e.target as HTMLAudioElement;
 		if (audio.tagName !== 'AUDIO') return;
-		const wrapper = audio.closest('.chat-audio-msg') as HTMLElement | null;
+		const wrapper = audio.closest('.chat-audio-msg');
 		if (!wrapper) return;
 		const dur = Math.ceil(audio.duration);
 		const durEl = wrapper.querySelector('.chat-audio-dur');
@@ -88,60 +99,60 @@ export function setupChatBubbleEvents(container: HTMLElement) {
 }
 
 function openMediaOverlay(type: 'img' | 'video', uri: string) {
-	const overlay = document.createElement('div');
+	const overlay = activeDocument.createElement('div');
 	overlay.className = 'chat-media-overlay';
 	overlay.addEventListener('click', (ev) => { if (ev.target === overlay) overlay.remove(); });
 
-	const modal = document.createElement('div');
+	const modal = activeDocument.createElement('div');
 	modal.className = 'chat-media-modal';
 
 	if (type === 'img') {
-		const img = document.createElement('img');
+		const img = activeDocument.createElement('img');
 		img.src = uri;
 		img.className = 'chat-media-full';
 		modal.appendChild(img);
 	} else {
-		const video = document.createElement('video');
+		const video = activeDocument.createElement('video');
 		video.src = uri;
 		video.controls = true;
 		video.className = 'chat-media-full';
-		video.play();
+		void video.play();
 		modal.appendChild(video);
 	}
 	overlay.appendChild(modal);
-	document.body.appendChild(overlay);
+	activeDocument.body.appendChild(overlay);
 }
 
 function openPdfOverlay(uri: string) {
-	const overlay = document.createElement('div');
+	const overlay = activeDocument.createElement('div');
 	overlay.className = 'chat-file-overlay';
 	overlay.addEventListener('click', (ev) => { if (ev.target === overlay) overlay.remove(); });
 
-	const modal = document.createElement('div');
+	const modal = activeDocument.createElement('div');
 	modal.className = 'chat-file-modal';
-	const iframe = document.createElement('iframe');
+	const iframe = activeDocument.createElement('iframe');
 	iframe.src = uri;
-	iframe.style.cssText = 'width:100%;height:75vh;border:none;border-radius:0 0 12px 12px';
+	iframe.className = 'chat-pdf-iframe';
 	modal.appendChild(iframe);
 	overlay.appendChild(modal);
-	document.body.appendChild(overlay);
+	activeDocument.body.appendChild(overlay);
 }
 
 function openForwardOverlay(container: HTMLElement, templateId: string) {
-	const template = container.querySelector(`#${templateId}`) as HTMLElement | null;
+	const template = container.querySelector<HTMLElement>(`#${templateId}`);
 	if (!template) return;
 	const clone = template.cloneNode(true) as HTMLElement;
-	clone.style.display = '';
+	clone.classList.remove('forward-detail-template');
 
-	const overlay = document.createElement('div');
+	const overlay = activeDocument.createElement('div');
 	overlay.className = 'chat-forward-overlay';
 	overlay.addEventListener('click', (ev) => { if (ev.target === overlay) overlay.remove(); });
 
-	const modal = document.createElement('div');
+	const modal = activeDocument.createElement('div');
 	modal.className = 'chat-forward-modal';
 	modal.appendChild(clone);
 	overlay.appendChild(modal);
-	document.body.appendChild(overlay);
+	activeDocument.body.appendChild(overlay);
 
 	// Re-bind event delegation on the modal so media/PDF clicks inside the popup work
 	setupChatBubbleEvents(modal);
@@ -194,7 +205,7 @@ export function renderChatLog(markdown: string, fileMetas?: FileMeta[], selfName
 							isAllSystem = false;
 							continue;
 						}
-						const rendered = classifyAndRender(part, metaMap, 'chat');
+						const rendered = classifyAndRender(part, metaMap);
 						if (rendered.type === 'file') {
 							fileHtml += rendered.html;
 							isAllSystem = false;
@@ -260,9 +271,9 @@ export function renderChatLog(markdown: string, fileMetas?: FileMeta[], selfName
 /** Returns true if the text is purely an audio reference */
 function isAudioMedia(text: string): boolean {
 	const trimmed = text.trim();
-	if (!/^!\[\[.+?\]\]$/.test(trimmed)) return false;
+	if (!WIKILINK_ONLY_RE.test(trimmed)) return false;
 	if (trimmed.includes('data:audio/')) return true;
-	return new RegExp(`\\.(${AUDIO_EXTS.join('|')})\\b`, 'i').test(trimmed);
+	return AUDIO_EXT_RE.test(trimmed);
 }
 
 /** Render audio as a WeChat-style voice bubble — interaction via event delegation */
@@ -277,37 +288,45 @@ function renderAudioBubble(text: string, side: string): string {
 /** Returns true if the text is purely a media reference (no surrounding text — images/video only, audio handled separately) */
 function isMediaOnly(text: string): boolean {
 	const trimmed = text.trim();
-	if (!/^!\[\[.+?\]\]$/.test(trimmed)) return false;
+	if (!WIKILINK_ONLY_RE.test(trimmed)) return false;
 	if (trimmed.includes('RESOLVED:')) {
 		if (trimmed.includes('data:video/')) return true;
-		const mediaExts = new RegExp(`\\.(${[...IMAGE_EXTS, ...VIDEO_EXTS, 'emoj'].join('|')})`, 'i');
-		return mediaExts.test(trimmed);
+		return MEDIA_EXT_NB_RE.test(trimmed);
 	}
-	const mediaExts = new RegExp(`\\.(${[...IMAGE_EXTS, ...VIDEO_EXTS, 'emoj'].join('|')})\\b`, 'i');
-	return mediaExts.test(trimmed);
+	return MEDIA_EXT_RE.test(trimmed);
 }
 
 /** Returns true if the text is a file attachment (PDF, DOC, etc.) */
 function isFileAttachment(text: string): boolean {
 	const trimmed = text.trim();
-	if (!/^!\[\[.+?\]\]$/.test(trimmed)) return false;
-	return new RegExp(`\\.(${FILE_EXTS.join('|')})\\b`, 'i').test(trimmed);
+	if (!WIKILINK_ONLY_RE.test(trimmed)) return false;
+	return FILE_EXT_RE.test(trimmed);
 }
 
 type RenderedType = 'text' | 'media' | 'file' | 'system';
 
+/** Single-pass content classification — avoid re-trim + re-test WIKILINK_ONLY_RE */
+function classifyContent(text: string): RenderedType {
+	const trimmed = text.trim();
+	if (WIKILINK_ONLY_RE.test(trimmed)) {
+		if (FILE_EXT_RE.test(trimmed)) return 'file';
+		if (trimmed.includes('data:video/')) return 'media';
+		if (trimmed.includes('RESOLVED:')) {
+			if (MEDIA_EXT_NB_RE.test(trimmed)) return 'media';
+		} else if (MEDIA_EXT_RE.test(trimmed)) {
+			return 'media';
+		}
+		return 'text';
+	}
+	if (SYSTEM_MSG_RE.test(trimmed)) return 'system';
+	return 'text';
+}
+
 /** Classify content + render — shared by main chat and merge-forward */
-function classifyAndRender(content: string, metaMap: Map<string, FileMeta>, cssPrefix: string): { html: string; type: RenderedType } {
-	if (isFileAttachment(content)) {
-		return { html: renderFileCard(content, metaMap), type: 'file' };
-	}
-	if (isMediaOnly(content)) {
-		return { html: renderPlainText(content), type: 'media' };
-	}
-	if (isSystemMessage(content)) {
-		return { html: renderPlainText(content), type: 'system' };
-	}
-	return { html: renderPlainText(content), type: 'text' };
+function classifyAndRender(content: string, metaMap: Map<string, FileMeta>): { html: string; type: RenderedType } {
+	const type = classifyContent(content);
+	if (type === 'file') return { html: renderFileCard(content, metaMap), type: 'file' };
+	return { html: renderPlainText(content), type };
 }
 
 /** Render a file attachment as a card — PDF preview via event delegation */
@@ -316,19 +335,9 @@ function renderFileCard(part: string, metaMap: Map<string, FileMeta>): string {
 	if (!match) return escapeHtml(part);
 
 	const linkText = match[1];
-		let displayName: string;
-		let url = '';
-
-		if (linkText.startsWith('RESOLVED:')) {
-			url = linkText.slice(9);
-			displayName = decodeURIComponent(url.split('?')[0].split('/').pop() || url);
-		} else {
-			displayName = linkText;
-			url = linkText;
-		}
+	const { displayName, uri: url, ext } = resolveFileLink(linkText);
 
 	const meta = metaMap.get(displayName);
-	const ext = displayName.split('.').pop()?.toUpperCase() || 'FILE';
 	const size = meta?.size || '';
 
 	const actionAttr = ext === 'PDF' && url
@@ -406,10 +415,10 @@ function renderQuoteBar(sender: string, quote: string): string {
 	const mediaMatch = quote.match(/!\[\[RESOLVED:(.+?)\]\]/);
 	if (mediaMatch) {
 		const resolved = mediaMatch[1];
-		const isVideo = resolved.startsWith('data:video/') || new RegExp(`\\.(${VIDEO_EXTS.join('|')})\\b`, 'i').test(resolved);
-		const isAudio = resolved.startsWith('data:audio/') || new RegExp(`\\.(${AUDIO_EXTS.join('|')})\\b`, 'i').test(resolved);
-		const isImage = resolved.startsWith('data:image/') || new RegExp(`\\.(${IMAGE_EXTS.join('|')})\\b`, 'i').test(resolved);
-		const isFile = new RegExp(`\\.(${FILE_EXTS.join('|')})\\b`, 'i').test(resolved);
+		const isVideo = resolved.startsWith('data:video/') || VIDEO_EXT_RE.test(resolved);
+		const isAudio = resolved.startsWith('data:audio/') || AUDIO_EXT_RE.test(resolved);
+		const isImage = resolved.startsWith('data:image/') || IMAGE_EXT_RE.test(resolved);
+		const isFile = FILE_EXT_RE.test(resolved);
 
 		let preview = '';
 		if (isImage) {
@@ -461,7 +470,7 @@ function renderMergeForward(part: MergeForward, metaMap: Map<string, FileMeta>, 
 	cardHtml += '</div>';
 
 	// Hidden template — items rendered as mini bubbles
-	cardHtml += `<div id="${uid}" class="forward-detail-template" style="display:none">`;
+	cardHtml += `<div id="${uid}" class="forward-detail-template">`;
 	cardHtml += `<div class="forward-detail-title">${escapeHtml(part.title)}</div>`;
 	for (const item of part.items) {
 		if ('plain' in item) {
@@ -473,13 +482,11 @@ function renderMergeForward(part: MergeForward, metaMap: Map<string, FileMeta>, 
 		const side = isSelf ? 'self' : 'other';
 		cardHtml += `<div class="forward-item ${side}"><span class="forward-sender">${escapeHtml(sender)} <span class="forward-time">${escapeHtml(time)}</span></span>`;
 
-		const sr = classifyAndRender(content, metaMap, 'forward');
+		const sr = classifyAndRender(content, metaMap);
 		if (sr.type === 'file') {
 			const raw = content.match(/!\[\[(.+?)\]\]/)?.[1] || '';
-			const uri = raw.startsWith('RESOLVED:') ? raw.slice(9).split('?')[0] : '';
-			const filename = raw.replace(/^RESOLVED:/, '').split('?')[0].split('/').pop() || raw;
-			const ext = (filename.split('.').pop() || '').toUpperCase();
-			cardHtml += `<div class="forward-media">${renderFileCardMini(ext, safeDecodeURI(filename), uri)}</div>`;
+			const { displayName, uri, ext } = resolveFileLink(raw);
+			cardHtml += `<div class="forward-media">${renderFileCardMini(ext, displayName, uri)}</div>`;
 		} else if (sr.type === 'media') {
 			cardHtml += `<div class="forward-media">${sr.html}</div>`;
 		} else {
@@ -496,6 +503,21 @@ function renderMergeForward(part: MergeForward, metaMap: Map<string, FileMeta>, 
 // ────────────────────────────────────
 // 工具函数
 // ────────────────────────────────────
+
+/** Resolve a wikilink reference into display-friendly components */
+function resolveFileLink(filename: string): { displayName: string; uri: string; ext: string } {
+	let uri = '';
+	let displayName: string;
+	if (filename.startsWith('RESOLVED:')) {
+		uri = filename.slice(9);
+		displayName = decodeURIComponent(uri.split('?')[0].split('/').pop() || uri);
+	} else {
+		displayName = filename;
+		uri = filename;
+	}
+	const ext = displayName.split('.').pop()?.toUpperCase() || 'FILE';
+	return { displayName, uri, ext };
+}
 
 function safeDecodeURI(str: string): string {
 	try { return decodeURIComponent(str); } catch { return str; }
