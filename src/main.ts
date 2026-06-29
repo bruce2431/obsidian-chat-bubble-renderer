@@ -5,7 +5,7 @@ import {
 	Notice,
 } from 'obsidian';
 import { DEFAULT_SETTINGS, ChatBubbleSettings, ChatBubbleSettingTab } from './settings';
-import { renderChatLog, FileMeta, setupChatBubbleEvents } from './chat-view';
+import { renderChatLog, FileMeta, setupChatBubbleEvents, initLocationMaps, destroyLocationMaps } from './chat-view';
 
 export default class ChatBubblePlugin extends Plugin {
 	settings!: ChatBubbleSettings;
@@ -149,14 +149,15 @@ export default class ChatBubblePlugin extends Plugin {
 						contentEl.appendChild(chatDoc.body.firstChild);
 					}
 					setupChatBubbleEvents(contentEl);
+				initLocationMaps(contentEl);
 			} finally {
 				this.rendering = false;
 			}
 		}
 
 	closeBubbles() {
-		activeDocument.querySelectorAll('.chat-bubble-overlay').forEach(el => el.remove());
-	}
+			activeDocument.querySelectorAll('.chat-bubble-overlay').forEach(el => { destroyLocationMaps(el as HTMLElement); el.remove(); });
+		}
 
 	onunload() { this.closeBubbles(); }
 

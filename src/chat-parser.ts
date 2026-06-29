@@ -16,6 +16,9 @@
  * [合并转发|对话标题]
  *   发送者名 YYYY-MM-DD HH:MM
  *   消息内容
+ * 
+ * [链接|链接标题](URL)
+ *   链接内容
  */
 
 const NL = String.fromCharCode(10); // newline — avoids esbuild CRLF mangling
@@ -23,7 +26,7 @@ const NL = String.fromCharCode(10); // newline — avoids esbuild CRLF mangling
 export interface ChatMessage {
 	name: string;
 	time: string;
-	body: (string | QuoteReply | MergeForward)[];
+	body: (string | QuoteReply | MergeForward | LinkCard | LocationCard)[];
 }
 
 export interface QuoteReply {
@@ -49,6 +52,20 @@ export interface MergeForward {
 	items: (ForwardItem | ForwardPlainItem)[];
 }
 
+export interface LinkCard {
+	type: 'link-card';
+	title: string;
+	url: string;
+}
+
+export interface LocationCard {
+	type: 'location';
+	label: string;
+	city?: string;
+	lat?: number;
+	lng?: number;
+}
+
 export interface ParseResult {
 	preamble: string;
 	messages: ChatMessage[];
@@ -57,6 +74,8 @@ export interface ParseResult {
 const HEADER_RE = /^\[(.*?)\]\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/;
 const QUOTE_REPLY_RE = /^>\s*\[(.+?)\]\s+(.+)/;
 const MERGE_FORWARD_RE = /^\[合并转发\|(.+?)\]/;
+const LINK_CARD_RE = /^\[链接\|(.+?)\]\((.+)\)$/;
+const LOCATION_RE = /^\[位置\|([^\]|]+)(?:\|([^\]|]*))?(?:\|([^\]|]*))?(?:\|([^\]|]*))?\]/;
 const INDENT_CONTENT_RE = /^\s{2,}(.+)/;
 /** Merge forward sender line: 名字 YYYY-M-D [上午/下午] H:MM[:SS] */
 const FORWARD_SENDER_RE = /^(.+?)\s+(\d{4}-\d{1,2}-\d{1,2}\s+(?:上午|下午|凌晨|中午)?\s*\d{1,2}:\d{2}(?::\d{2})?)/;
@@ -90,6 +109,36 @@ export function parseChatLog(markdown: string): ParseResult {
 			if (rest) currentMsg.body.push(rest);
 		} else if (currentMsg) {
 			const trimmed = line.trim();
+
+			// ── Link card ──
+			const linkMatch = trimmed.match(LINK_CARD_RE);
+			if (linkMatch) {
+				currentMsg.body.push({ type: 'link-card', title: linkMatch[1], url: linkMatch[2] });
+				continue;
+			}
+
+			// ── Location card ──
+			const locMatch = trimmed.match(LOCATION_RE);
+			if (locMatch) {
+				const label = locMatch[1];
+				const city = locMatch[2] || undefined;
+				let lat: number | undefined;
+				let lng: number | undefined;
+				// Pipe-separated: wetrace message.go [label|city|lat|lng]
+				// Comma-separated: wetrace2md [label|city|lng,lat]
+				const c3 = locMatch[3];
+				const c4 = locMatch[4];
+				if (c3 && c4) {
+					lat = parseFloat(c3);
+					lng = parseFloat(c4);
+				} else if (c3 && c3.includes(',')) {
+					const [a, b] = c3.split(',');
+					lng = parseFloat(a);
+					lat = parseFloat(b);
+				}
+				currentMsg.body.push({ type: 'location', label, city, lat, lng });
+				continue;
+			}
 
 			// ── Merge forward card ──
 			const forwardMatch = line.match(MERGE_FORWARD_RE);

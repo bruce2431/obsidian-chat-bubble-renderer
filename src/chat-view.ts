@@ -3,13 +3,15 @@
  * 将解析后的聊天消息渲染为微信风格气泡 UI
  * 媒体文件（图片/音频/视频）不套气泡，直接渲染
  * 文件附件（PDF/DOC等）渲染为卡片，点击弹窗预览
+ * 链接卡片（[链接|...]）渲染为微信风格链接卡片
  * 引用回复：quote bar 在气泡外侧（对方在上，自己在下）
  *
  * 交互通过事件委托处理（setupChatBubbleEvents），
  * 不在 HTML 中嵌入 onclick — 安全且可维护。
  */
 
-import { parseChatLog, MergeForward, ForwardItem } from './chat-parser';
+import { parseChatLog, MergeForward, ForwardItem, LinkCard, LocationCard } from './chat-parser';
+import maplibregl from 'maplibre-gl';
 
 const NL = String.fromCharCode(10);
 
@@ -25,7 +27,7 @@ const FILE_EXTS = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'z
 /** 预编译正则 — 避免每条消息重复构造 */
 const AUDIO_EXT_RE = new RegExp(`\\.(${AUDIO_EXTS.join('|')})\\b`, 'i');
 const MEDIA_EXT_RE = new RegExp(`\\.(${[...IMAGE_EXTS, ...VIDEO_EXTS, 'emoj'].join('|')})\\b`, 'i');
-const MEDIA_EXT_NB_RE = new RegExp(`\\.(${[...IMAGE_EXTS, ...VIDEO_EXTS, 'emoj'].join('|')})`, 'i'); // no \b boundary for RESOLVED: URIs
+const MEDIA_EXT_NB_RE = new RegExp(`\\.(${[...IMAGE_EXTS, ...VIDEO_EXTS, 'emoj'].join('|')})`, 'i'); // no \\b boundary for RESOLVED: URIs
 const FILE_EXT_RE = new RegExp(`\\.(${FILE_EXTS.join('|')})\\b`, 'i');
 const IMAGE_EXT_RE = new RegExp(`\\.(${IMAGE_EXTS.join('|')})\\b`, 'i');
 const VIDEO_EXT_RE = new RegExp(`\\.(${VIDEO_EXTS.join('|')})\\b`, 'i');
@@ -74,10 +76,15 @@ export function setupChatBubbleEvents(container: HTMLElement) {
 				return;
 			}
 			case 'expand-forward': {
-					openForwardOverlay(container, el.dataset.id!);
-					return;
+						openForwardOverlay(container, el.dataset.id!);
+						return;
+					}
+				case 'open-geo': {
+						const geo = (el.closest('[data-geo]') as HTMLElement)?.dataset.geo;
+						if (geo) window.open(geo, '_blank', 'noopener');
+						return;
+					}
 				}
-			}
 	});
 
 	// Update voice bubble duration when audio metadata loads
@@ -182,7 +189,7 @@ export function renderChatLog(markdown: string, fileMetas?: FileMeta[], selfName
 
 		for (const msg of messages) {
 			const isSelf = isSelfMessage(msg.name, selfNames);
-				const side = isSelf ? 'self' : 'other';
+			const side = isSelf ? 'self' : 'other';
 
 			let isAllSystem = true;
 			let systemHtml = '';
@@ -191,39 +198,45 @@ export function renderChatLog(markdown: string, fileMetas?: FileMeta[], selfName
 			let quoteHtml = '';
 			let forwardHtml = '';
 			let fileHtml = '';
+			let linkCardHtml = '';
+				let locationHtml = '';
 
-			for (const part of msg.body) {
-					if (typeof part === 'string') {
-						if (!part.trim()) continue;
-						// Audio-only → render as WeChat-style voice bubble
-						if (isAudioMedia(part)) {
-							mediaHtml += renderAudioBubble(part, side);
-							isAllSystem = false;
-							continue;
-						}
-						const rendered = classifyAndRender(part, metaMap);
-						if (rendered.type === 'file') {
-							fileHtml += rendered.html;
-							isAllSystem = false;
-						} else if (rendered.type === 'media') {
-							mediaHtml += rendered.html;
-							isAllSystem = false;
-						} else if (rendered.type === 'system') {
-							systemHtml += rendered.html + NL;
-							isAllSystem = isAllSystem && true;
-						} else {
-							textHtml += rendered.html + NL;
-							isAllSystem = false;
-						}
+				for (const part of msg.body) {
+				if (typeof part === 'string') {
+					if (!part.trim()) continue;
+					// Audio-only → render as WeChat-style voice bubble
+					if (isAudioMedia(part)) {
+						mediaHtml += renderAudioBubble(part, side);
+						isAllSystem = false;
+						continue;
+					}
+					const rendered = classifyAndRender(part, metaMap);
+					if (rendered.type === 'file') {
+						fileHtml += rendered.html;
+						isAllSystem = false;
+					} else if (rendered.type === 'media') {
+						mediaHtml += rendered.html;
+						isAllSystem = false;
+					} else if (rendered.type === 'system') {
+						systemHtml += rendered.html + NL;
+						isAllSystem = isAllSystem && true;
 					} else {
-					// quote-reply or merge-forward — not system
+						textHtml += rendered.html + NL;
+						isAllSystem = false;
+					}
+				} else {
+					// quote-reply, merge-forward, or link-card — not system
 					if (part.type === 'quote-reply') {
 						quoteHtml = renderQuoteBar(part.sender, part.quote);
 						textHtml += renderPlainText(part.reply);
 					} else if (part.type === 'merge-forward') {
 						forwardHtml += renderMergeForward(part, metaMap, selfNames);
-					}
-					isAllSystem = false;
+					} else if (part.type === 'link-card') {
+								linkCardHtml += renderLinkCard(part, isSelf);
+							} else if (part.type === 'location') {
+								locationHtml += renderLocationCard(part);
+							}
+							isAllSystem = false;
 				}
 			}
 
@@ -245,8 +258,13 @@ export function renderChatLog(markdown: string, fileMetas?: FileMeta[], selfName
 			if (systemHtml) {
 				textHtml += `<span class="chat-system-inline">${systemHtml}</span>`;
 			}
+			// Text in bubble, link card outside bubble (or standalone if no text)
 			if (textHtml) {
 				parts.push(`<div class="chat-bubble">${textHtml}</div>`);
+			}
+			// Link card after bubble (or standalone if no text)
+			if (linkCardHtml) {
+				parts.push(linkCardHtml);
 			}
 			// Quote bar below the bubble
 			if (quoteHtml) {
@@ -255,7 +273,8 @@ export function renderChatLog(markdown: string, fileMetas?: FileMeta[], selfName
 			parts.push(mediaHtml);
 			parts.push(fileHtml);
 			parts.push(forwardHtml);
-			parts.push('</div>');
+				parts.push(locationHtml);
+				parts.push('</div>');
 		}
 
 		parts.push('</div>');
@@ -314,6 +333,7 @@ function renderFileCard(part: string, metaMap: Map<string, FileMeta>): string {
 
 	const linkText = match[1];
 	const { displayName, uri: url, ext } = resolveFileLink(linkText);
+	const truncatedName = middleTruncate(displayName, 28);
 
 	const meta = metaMap.get(displayName);
 	const size = meta?.size || '';
@@ -324,7 +344,7 @@ function renderFileCard(part: string, metaMap: Map<string, FileMeta>): string {
 
 	return `<div class="chat-file-card"${actionAttr}>`
 		+ '<div class="chat-file-info">'
-		+ `<div class="chat-file-name">${escapeHtml(displayName)}</div>`
+		+ `<div class="chat-file-name" title="${escapeAttr(displayName)}">${escapeHtml(truncatedName)}</div>`
 		+ (size ? `<div class="chat-file-size">${escapeHtml(size)}</div>` : '')
 		+ '</div>'
 		+ '<div class="chat-file-icon">'
@@ -341,6 +361,88 @@ function renderFileCardMini(ext: string, filename: string, uri: string): string 
 	return `<span class="forward-file-card"${actionAttr}><span class="chat-quote-file-icon">${escapeHtml(ext)}</span>${escapeHtml(filename)}</span>`;
 }
 
+/** Render a WeChat-style link card — shared link with domain */
+function renderLinkCard(link: LinkCard, isSelf: boolean): string {
+	let domain = '';
+	try { domain = new URL(link.url).hostname; } catch {}
+
+	const sideClass = isSelf ? 'self' : 'other';
+	return `<a href="${escapeAttr(link.url)}" class="chat-link-card ${sideClass}" target="_blank" rel="noopener">
+		<span class="chat-link-card-icon">🔗</span>
+		<span class="chat-link-card-body">
+			<span class="chat-link-card-title">${escapeHtml(link.title)}</span>
+			<span class="chat-link-card-domain">${escapeHtml(domain)}</span>
+		</span>
+	</a>`;
+}
+
+/** Render a WeChat-style location card */
+let _locMapId = 0;
+function renderLocationCard(loc: LocationCard): string {
+	const addr = (loc.city && !loc.label.includes(loc.city)) ? `${loc.city} ${loc.label}` : loc.label;
+	const hasCoords = loc.lat !== undefined && loc.lng !== undefined && !isNaN(loc.lat) && !isNaN(loc.lng);
+	const mid = 'lm' + (_locMapId++);
+	const geoUrl = hasCoords
+		? `https://www.openstreetmap.org/?mlat=${loc.lat}&mlon=${loc.lng}&zoom=15`
+		: '';
+	const mapArea = hasCoords
+		? `<div class="chat-location-map-wrap" data-action="open-geo" data-geo="${escapeAttr(geoUrl)}">
+			<div id="${mid}" class="chat-location-map" data-lat="${loc.lat}" data-lng="${loc.lng}"></div>
+			<span class="chat-location-map-pin">📍</span>
+		</div>`
+		: `<div class="chat-location-map-wrap"><div class="chat-location-map"></div><span class="chat-location-map-pin">📍</span></div>`;
+	return `<div class="chat-location-card">
+		<span class="chat-location-icon">📍</span>
+		<span class="chat-location-body">
+			<span class="chat-location-title">${escapeHtml(loc.label)}</span>
+			<span class="chat-location-addr">${escapeHtml(addr)}</span>
+		</span>
+		${mapArea}
+	</div>`;
+}
+
+/** Initialize MapLibre GL maps on location cards */
+export function initLocationMaps(container: HTMLElement) {
+	// Wait for layout: DOMParser-created elements need a frame to compute dimensions
+	requestAnimationFrame(() => {
+		const STYLE_URL = 'https://tiles.openfreemap.org/styles/bright';
+		const maps = container.querySelectorAll<HTMLElement>('.chat-location-map');
+
+		maps.forEach(el => {
+			const lat = parseFloat(el.dataset.lat || '');
+			const lng = parseFloat(el.dataset.lng || '');
+			const w = el.offsetWidth, h = el.offsetHeight;
+			if (!lat || !lng || !w || !h) return;
+
+			try {
+				const map = new maplibregl.Map({
+					container: el,
+					style: STYLE_URL,
+					center: [lng, lat],
+					zoom: 14,
+					interactive: false,
+					attributionControl: false,
+				});
+				new maplibregl.Marker({ color: '#e74c3c' })
+					.setLngLat([lng, lat])
+					.addTo(map);
+				(el as any)._maplibreglMap = map;
+			} catch (e) {
+				// Style/tile load failed — placeholder remains
+			}
+		});
+	});
+}
+
+/** Destroy all MapLibre GL maps in a container */
+export function destroyLocationMaps(container: HTMLElement) {
+	container.querySelectorAll<HTMLElement>('.chat-location-map').forEach(el => {
+		const map = (el as any)._maplibreglMap;
+		if (map && typeof map.remove === 'function') map.remove();
+		delete (el as any)._maplibreglMap;
+	});
+}
+
 function isSelfMessage(name: string, selfNames?: string[]): boolean {
 	const names = selfNames?.length ? selfNames : ['自己', '我', 'me'];
 	return names.some(n => name.toLowerCase() === n.toLowerCase());
@@ -348,6 +450,12 @@ function isSelfMessage(name: string, selfNames?: string[]): boolean {
 
 function renderPlainText(text: string): string {
 	let result = escapeHtml(text);
+
+	// Convert Markdown links [text](url) → clickable <a>
+	result = result.replace(/\[(.+?)\]\(([^)]+)\)/g, (_m, linkText: string, url: string) => {
+		const safeUrl = escapeAttr(url);
+		return `<a href="${safeUrl}" class="chat-link" target="_blank" rel="noopener">${linkText}</a>`;
+	});
 
 	result = result.replace(/!\[\[(.+?)(?:\|(\d+))?\]\]/g, (_m, file: string, w: string) => {
 		file = file.trim();
@@ -404,9 +512,9 @@ function renderQuoteBar(sender: string, quote: string): string {
 		} else if (isVideo) {
 			preview = `<video src="${escapeAttr(resolved)}" class="chat-quote-video-thumb" data-action="preview-media" data-type="video" data-uri="${escapeAttr(resolved)}"  muted preload="metadata"></video>`;
 		} else if (isAudio) {
-				const uid = 'au-' + Math.random().toString(36).slice(2, 8);
-				const label = resolved.startsWith('data:') ? '语音消息' : (safeDecodeURI(resolved.split('?')[0].split('/').pop() || 'audio'));
-				preview = `<span class="chat-quote-audio-bar" data-action="toggle-audio" data-audio-id="${uid}" ><span class="chat-quote-audio-icon">🔊</span>${escapeHtml(label)}<audio id="${uid}" src="${escapeAttr(resolved)}" hidden preload="metadata"></audio></span>`;
+			const uid = 'au-' + Math.random().toString(36).slice(2, 8);
+			const label = resolved.startsWith('data:') ? '语音消息' : (safeDecodeURI(resolved.split('?')[0].split('/').pop() || 'audio'));
+			preview = `<span class="chat-quote-audio-bar" data-action="toggle-audio" data-audio-id="${uid}" ><span class="chat-quote-audio-icon">🔊</span>${escapeHtml(label)}<audio id="${uid}" src="${escapeAttr(resolved)}" hidden preload="metadata"></audio></span>`;
 		} else if (isFile) {
 			const filename = quote.match(/!\[\[(.+?)\]\]/)?.[1] || '';
 			const raw = filename.replace(/^RESOLVED:/, '').split('?')[0].split('/').pop() || filename;
@@ -426,9 +534,9 @@ function renderQuoteBar(sender: string, quote: string): string {
 		const ext = filename.split('.').pop()?.toLowerCase() || '';
 		if (VIDEO_EXTS.includes(ext)) return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}</span><span class="chat-quote-video-icon">▶</span></div>`;
 		if (AUDIO_EXTS.includes(ext)) {
-				const uid = 'au-' + Math.random().toString(36).slice(2, 8);
-				return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}</span><span class="chat-quote-audio-bar" data-action="toggle-audio" data-audio-id="${uid}" ><span class="chat-quote-audio-icon">🔊</span>语音消息<audio id="${uid}" src="${escapeAttr(safeEncodeURI(filename))}" hidden preload="metadata"></audio></span></div>`;
-			}
+			const uid = 'au-' + Math.random().toString(36).slice(2, 8);
+			return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}</span><span class="chat-quote-audio-bar" data-action="toggle-audio" data-audio-id="${uid}" ><span class="chat-quote-audio-icon">🔊</span>语音消息<audio id="${uid}" src="${escapeAttr(safeEncodeURI(filename))}" hidden preload="metadata"></audio></span></div>`;
+		}
 		if (IMAGE_EXTS.includes(ext)) return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}</span>[图片]</div>`;
 		const extUpper = (filename.split('.').pop() || '').toUpperCase();
 		return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}</span><span class="chat-quote-file"><span class="chat-quote-file-icon">${escapeHtml(extUpper)}</span>${escapeHtml(filename)}</span></div>`;
@@ -498,6 +606,18 @@ function resolveFileLink(filename: string): { displayName: string; uri: string; 
 
 function safeDecodeURI(str: string): string {
 	try { return decodeURIComponent(str); } catch { return str; }
+}
+
+/** Truncate filename in middle, preserving extension */
+function middleTruncate(name: string, maxLen: number): string {
+	if (name.length <= maxLen) return name;
+	const dot = name.lastIndexOf('.');
+	const ext = dot > 0 ? name.slice(dot) : '';
+	const base = dot > 0 ? name.slice(0, dot) : name;
+	const avail = maxLen - ext.length - 3; // 3 for "..."
+	if (avail <= 0) return name.slice(0, maxLen - 3) + '...';
+	const half = Math.floor(avail / 2);
+	return base.slice(0, half) + '...' + base.slice(-(avail - half)) + ext;
 }
 
 /** Escape HTML entities */
