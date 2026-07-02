@@ -26,7 +26,7 @@ const NL = String.fromCharCode(10); // newline — avoids esbuild CRLF mangling
 export interface ChatMessage {
 	name: string;
 	time: string;
-	body: (string | QuoteReply | MergeForward | LinkCard | LocationCard)[];
+	body: (string | QuoteReply | MergeForward | LinkCard | LocationCard | Card)[];
 }
 
 export interface QuoteReply {
@@ -66,6 +66,14 @@ export interface LocationCard {
 	lng?: number;
 }
 
+export interface Card {
+	type: 'card';
+	nickname: string;
+	alias?: string;   // 微信号:xxx (personal only)
+	sex?: string;     // personal only
+	region?: string;  // province/city
+}
+
 export interface ParseResult {
 	preamble: string;
 	messages: ChatMessage[];
@@ -76,6 +84,7 @@ const QUOTE_REPLY_RE = /^>\s*\[(.+?)\]\s+(.+)/;
 const MERGE_FORWARD_RE = /^\[合并转发\|(.+?)\]/;
 const LINK_CARD_RE = /^\[链接\|(.+?)\]\((.+)\)$/;
 export const LOCATION_RE = /^\[位置\|([^\]|]+)(?:\|([^\]|]*))?(?:\|([^\]|]*))?(?:\|([^\]|]*))?\]/;
+export const CARD_RE = /^\[名片\|([^\]|]+)(?:\|([^\]|]*))?(?:\|([^\]|]*))?(?:\|([^\]|]*))?\]/;
 const INDENT_CONTENT_RE = /^\s{2,}(.+)/;
 /** Merge forward sender line: 名字 YYYY-M-D [上午/下午] H:MM[:SS] */
 const FORWARD_SENDER_RE = /^(.+?)\s+(\d{4}-\d{1,2}-\d{1,2}\s+(?:上午|下午|凌晨|中午)?\s*\d{1,2}:\d{2}(?::\d{2})?)/;
@@ -137,6 +146,27 @@ export function parseChatLog(markdown: string): ParseResult {
 					lat = parseFloat(b);
 				}
 				currentMsg.body.push({ type: 'location', label, city, lat, lng });
+				continue;
+			}
+
+			// ── Card (contact card) ──
+			const cardMatch = trimmed.match(CARD_RE);
+			if (cardMatch) {
+				const nickname = cardMatch[1];
+				const f2 = cardMatch[2] || '';
+				const f3 = cardMatch[3] || '';
+				const f4 = cardMatch[4] || '';
+				// Distinguish personal card vs official account
+				// Personal: [名片|昵称|微信号:xxx|性别|地区]  — 4 fields after nickname
+				// Official: [名片|昵称|地区]  — 2 fields after nickname
+				const isPersonal = f2.includes('微信号') || (!!f2 && !!f3);
+				currentMsg.body.push({
+					type: 'card',
+					nickname,
+					alias: isPersonal ? f2 || undefined : undefined,
+					sex: isPersonal ? f3 || undefined : undefined,
+					region: isPersonal ? f4 || f2 || undefined : f2 || undefined,
+				});
 				continue;
 			}
 

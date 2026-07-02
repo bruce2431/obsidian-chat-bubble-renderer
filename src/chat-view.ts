@@ -10,7 +10,7 @@
  * 不在 HTML 中嵌入 onclick — 安全且可维护。
  */
 
-import { parseChatLog, MergeForward, LinkCard, LocationCard, LOCATION_RE } from './chat-parser';
+import { parseChatLog, MergeForward, LinkCard, LocationCard, Card, LOCATION_RE } from './chat-parser';
 import maplibregl from 'maplibre-gl';
 
 const NL = String.fromCharCode(10);
@@ -201,7 +201,8 @@ export function renderChatLog(markdown: string, fileMetas?: FileMeta[], selfName
 			let forwardHtml = '';
 			let fileHtml = '';
 			let linkCardHtml = '';
-				let locationHtml = '';
+			let locationHtml = '';
+			let cardHtml = '';
 
 				for (const part of msg.body) {
 				if (typeof part === 'string') {
@@ -237,6 +238,8 @@ export function renderChatLog(markdown: string, fileMetas?: FileMeta[], selfName
 								linkCardHtml += renderLinkCard(part, isSelf);
 							} else if (part.type === 'location') {
 								locationHtml += renderLocationCard(part);
+							} else if (part.type === 'card') {
+								cardHtml += renderCard(part);
 							}
 							isAllSystem = false;
 				}
@@ -276,6 +279,7 @@ export function renderChatLog(markdown: string, fileMetas?: FileMeta[], selfName
 			parts.push(fileHtml);
 			parts.push(forwardHtml);
 				parts.push(locationHtml);
+				parts.push(cardHtml);
 				parts.push('</div>');
 		}
 
@@ -356,6 +360,27 @@ function renderFileCard(part: string, metaMap: Map<string, FileMeta>): string {
 }
 
 /** Render a compact file card (used in merge-forward) */
+
+/** Render a WeChat-style contact card */
+function renderCard(card: Card): string {
+	const isPersonal = !!card.alias || !!card.sex;
+	const icon = isPersonal ? '👤' : '📢';
+	const aliasHtml = card.alias ? `<div class="chat-card-alias">${escapeHtml(card.alias)}</div>` : '';
+	const tagHtml = card.sex ? `<span class="chat-card-tag sex">${escapeHtml(card.sex)}</span>` : '';
+	const regionHtml = card.region ? `<span class="chat-card-tag region">${escapeHtml(card.region)}</span>` : '';
+	const tagLine = (tagHtml || regionHtml) ? `<div class="chat-card-tags">${tagHtml}${regionHtml}</div>` : '';
+
+	return `<div class="chat-file-card chat-card">
+		<div class="chat-file-icon">
+			<div class="chat-file-icon-box">${icon}</div>
+		</div>
+		<div class="chat-file-info">
+			<div class="chat-file-name">${escapeHtml(card.nickname)}</div>
+			${aliasHtml}
+			${tagLine}
+		</div>
+	</div>`;
+}
 function renderFileCardMini(ext: string, filename: string, uri: string): string {
 	const actionAttr = ext === 'PDF' && uri
 		? ` data-action="preview-pdf" data-uri="${escapeAttr(uri)}"`
