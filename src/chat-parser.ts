@@ -75,7 +75,7 @@ const HEADER_RE = /^\[(.*?)\]\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/;
 const QUOTE_REPLY_RE = /^>\s*\[(.+?)\]\s+(.+)/;
 const MERGE_FORWARD_RE = /^\[合并转发\|(.+?)\]/;
 const LINK_CARD_RE = /^\[链接\|(.+?)\]\((.+)\)$/;
-const LOCATION_RE = /^\[位置\|([^\]|]+)(?:\|([^\]|]*))?(?:\|([^\]|]*))?(?:\|([^\]|]*))?\]/;
+export const LOCATION_RE = /^\[位置\|([^\]|]+)(?:\|([^\]|]*))?(?:\|([^\]|]*))?(?:\|([^\]|]*))?\]/;
 const INDENT_CONTENT_RE = /^\s{2,}(.+)/;
 /** Merge forward sender line: 名字 YYYY-M-D [上午/下午] H:MM[:SS] */
 const FORWARD_SENDER_RE = /^(.+?)\s+(\d{4}-\d{1,2}-\d{1,2}\s+(?:上午|下午|凌晨|中午)?\s*\d{1,2}:\d{2}(?::\d{2})?)/;

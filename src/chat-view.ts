@@ -10,7 +10,7 @@
  * 不在 HTML 中嵌入 onclick — 安全且可维护。
  */
 
-import { parseChatLog, MergeForward, LinkCard, LocationCard } from './chat-parser';
+import { parseChatLog, MergeForward, LinkCard, LocationCard, LOCATION_RE } from './chat-parser';
 import maplibregl from 'maplibre-gl';
 
 const NL = String.fromCharCode(10);
@@ -531,6 +531,37 @@ function renderQuoteBar(sender: string, quote: string): string {
 		return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}</span>${preview}</div>`;
 	}
 
+	// Check for location reference: [位置|label|city|lat|lng]
+	const locMatch = quote.match(LOCATION_RE);
+	if (locMatch) {
+		const label = locMatch[1];
+		const city = locMatch[2] || undefined;
+		let lat: number | undefined;
+		let lng: number | undefined;
+		const c3 = locMatch[3];
+		const c4 = locMatch[4];
+		if (c3 && c4) {
+			lat = parseFloat(c3);
+			lng = parseFloat(c4);
+		} else if (c3 && c3.includes(',')) {
+			const [a, b] = c3.split(',');
+			lng = parseFloat(a);
+			lat = parseFloat(b);
+		}
+		const hasCoords = lat !== undefined && lng !== undefined && !isNaN(lat) && !isNaN(lng);
+		const addr = (city && !label.includes(city)) ? `${city} ${label}` : label;
+		const geoUrl = hasCoords
+			? `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}&zoom=15`
+			: '';
+		const mapUrl = hasCoords ? getStaticMapUrl(lat!, lng!) : '';
+
+		const preview = hasCoords
+			? `<img src="${escapeAttr(mapUrl)}" class="chat-quote-thumb chat-quote-map-thumb" data-action="open-geo" data-geo="${escapeAttr(geoUrl)}" >`
+			: `<span class="chat-quote-location-marker">📍</span>${escapeHtml(addr)}`;
+
+		return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}</span>${preview}</div>`;
+	}
+
 	const plainMatch = quote.match(/!\[\[(.+?)\]\]/);
 	if (plainMatch) {
 		const filename = plainMatch[1];
@@ -591,6 +622,14 @@ function renderMergeForward(part: MergeForward, metaMap: Map<string, FileMeta>, 
 // ────────────────────────────────────
 // 工具函数
 // ────────────────────────────────────
+
+/** Convert lat/lng to OSM static tile URL for quote thumbnails */
+function getStaticMapUrl(lat: number, lng: number, zoom = 15): string {
+	const n = Math.pow(2, zoom);
+	const x = Math.floor((lng + 180) / 360 * n);
+	const y = Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * n);
+	return `https://tile.openstreetmap.org/${zoom}/${x}/${y}.png`;
+}
 
 /** Resolve a wikilink reference into display-friendly components */
 function resolveFileLink(filename: string): { displayName: string; uri: string; ext: string } {
