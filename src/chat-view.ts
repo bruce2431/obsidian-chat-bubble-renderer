@@ -405,12 +405,12 @@ function renderLocationCard(loc: LocationCard): string {
 	</div>`;
 }
 
-/** Initialize MapLibre GL maps on location cards */
+/** Initialize MapLibre GL maps on location cards and quote map thumbnails */
 export function initLocationMaps(container: HTMLElement) {
 	// Wait for layout: DOMParser-created elements need a frame to compute dimensions
 	window.requestAnimationFrame(() => {
 		const STYLE_URL = 'https://tiles.openfreemap.org/styles/bright';
-		const maps = container.querySelectorAll<HTMLElement>('.chat-location-map');
+		const maps = container.querySelectorAll<HTMLElement>('.chat-location-map, .chat-quote-map-thumb');
 
 		maps.forEach(el => {
 			const lat = parseFloat(el.dataset.lat || '');
@@ -419,17 +419,21 @@ export function initLocationMaps(container: HTMLElement) {
 			if (!lat || !lng || !w || !h) return;
 
 			try {
+				const isQuoteThumb = el.classList.contains('chat-quote-map-thumb');
 				const map = new maplibregl.Map({
 					container: el,
 					style: STYLE_URL,
 					center: [lng, lat],
-					zoom: 14,
+					zoom: isQuoteThumb ? 9 : 14,
 					interactive: false,
 					attributionControl: false,
 				});
-				new maplibregl.Marker({ color: '#e74c3c' })
-					.setLngLat([lng, lat])
-					.addTo(map);
+				// Only add marker for full-size location cards (not tiny quote thumbs)
+				if (!isQuoteThumb) {
+					new maplibregl.Marker({ color: '#e74c3c' })
+						.setLngLat([lng, lat])
+						.addTo(map);
+				}
 				locationMaps.set(el, map);
 			} catch {
 				// Style/tile load failed — placeholder remains
@@ -440,7 +444,7 @@ export function initLocationMaps(container: HTMLElement) {
 
 /** Destroy all MapLibre GL maps in a container */
 export function destroyLocationMaps(container: HTMLElement) {
-	container.querySelectorAll<HTMLElement>('.chat-location-map').forEach(el => {
+	container.querySelectorAll<HTMLElement>('.chat-location-map, .chat-quote-map-thumb').forEach(el => {
 		locationMaps.get(el)?.remove();
 		locationMaps.delete(el);
 	});
@@ -553,10 +557,9 @@ function renderQuoteBar(sender: string, quote: string): string {
 		const geoUrl = hasCoords
 			? `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}&zoom=15`
 			: '';
-		const mapUrl = hasCoords ? getStaticMapUrl(lat!, lng!) : '';
 
 		const preview = hasCoords
-			? `<img src="${escapeAttr(mapUrl)}" class="chat-quote-thumb chat-quote-map-thumb" data-action="open-geo" data-geo="${escapeAttr(geoUrl)}" >`
+			? `<div class="chat-quote-thumb chat-quote-map-thumb" data-lat="${lat}" data-lng="${lng}" data-action="open-geo" data-geo="${escapeAttr(geoUrl)}"></div>`
 			: `<span class="chat-quote-location-marker">📍</span>${escapeHtml(addr)}`;
 
 		return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}</span>${preview}</div>`;
@@ -622,14 +625,6 @@ function renderMergeForward(part: MergeForward, metaMap: Map<string, FileMeta>, 
 // ────────────────────────────────────
 // 工具函数
 // ────────────────────────────────────
-
-/** Convert lat/lng to OSM static tile URL for quote thumbnails */
-function getStaticMapUrl(lat: number, lng: number, zoom = 15): string {
-	const n = Math.pow(2, zoom);
-	const x = Math.floor((lng + 180) / 360 * n);
-	const y = Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * n);
-	return `https://tile.openstreetmap.org/${zoom}/${x}/${y}.png`;
-}
 
 /** Resolve a wikilink reference into display-friendly components */
 function resolveFileLink(filename: string): { displayName: string; uri: string; ext: string } {
