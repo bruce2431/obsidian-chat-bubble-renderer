@@ -125,7 +125,7 @@ export default class ChatBubblePlugin extends Plugin {
 
 			new Notice('正在渲染聊天气泡...');
 			await this.doRender(view);
-			new Notice('聊天气泡已开启 | Esc 关闭');
+			new Notice('聊天气泡已开启 | esc 关闭');
 		}
 
 		async doRender(view: MarkdownView) {

@@ -10,10 +10,11 @@
  * 不在 HTML 中嵌入 onclick — 安全且可维护。
  */
 
-import { parseChatLog, MergeForward, ForwardItem, LinkCard, LocationCard } from './chat-parser';
+import { parseChatLog, MergeForward, LinkCard, LocationCard } from './chat-parser';
 import maplibregl from 'maplibre-gl';
 
 const NL = String.fromCharCode(10);
+const locationMaps = new WeakMap<HTMLElement, maplibregl.Map>();
 
 /** 系统消息正则 — 匹配则渲染为居中浅灰系统提示 */
 const SYSTEM_MSG_RE = /撤回了一条消息|拍了拍|加入了群聊|移出了群聊|修改群名为|被管理员|已成为新群主|开启了朋友验证|已经通过你的朋友验证/;
@@ -52,7 +53,8 @@ export interface FileMeta {
  */
 export function setupChatBubbleEvents(container: HTMLElement) {
 	container.addEventListener('click', (e) => {
-		const el = (e.target as Element).closest('[data-action]') as HTMLElement | null;
+		if (!(e.target instanceof Element)) return;
+		const el = e.target.closest<HTMLElement>('[data-action]');
 		if (!el) return;
 
 		const action = el.dataset.action!;
@@ -99,6 +101,10 @@ export function setupChatBubbleEvents(container: HTMLElement) {
 		if (durEl) durEl.textContent = dur + '"';
 		if (textEl) textEl.textContent = '语音消息 ';
 	}, true); // capture — 'loadedmetadata' doesn't bubble
+	container.addEventListener('error', (e) => {
+		const el = e.target as HTMLElement;
+		if (el.matches('.chat-bare-audio, .chat-bare-video, .chat-bare-img')) el.hidden = true;
+	}, true);
 }
 
 function openMediaOverlay(type: 'img' | 'video', uri: string) {
@@ -164,10 +170,6 @@ function openForwardOverlay(container: HTMLElement, templateId: string) {
 // ────────────────────────────────────
 // 渲染引擎
 // ────────────────────────────────────
-
-function isSystemMessage(text: string): boolean {
-	return SYSTEM_MSG_RE.test(text.trim());
-}
 
 export function renderChatLog(markdown: string, fileMetas?: FileMeta[], selfNames?: string[]): string {
 	const { preamble, messages } = parseChatLog(markdown);
@@ -364,10 +366,12 @@ function renderFileCardMini(ext: string, filename: string, uri: string): string 
 /** Render a WeChat-style link card — shared link with domain */
 function renderLinkCard(link: LinkCard, isSelf: boolean): string {
 	let domain = '';
-	try { domain = new URL(link.url).hostname; } catch {}
+	try { domain = new URL(link.url).hostname; } catch {
+		// Leave the domain blank for malformed links; the card itself still renders.
+	}
 
 	const sideClass = isSelf ? 'self' : 'other';
-	return `<a href="${escapeAttr(link.url)}" class="chat-link-card ${sideClass}" target="_blank" rel="noopener">
+	return `<a href="${safeHrefAttr(link.url)}" class="chat-link-card ${sideClass}" target="_blank" rel="noopener">
 		<span class="chat-link-card-icon">🔗</span>
 		<span class="chat-link-card-body">
 			<span class="chat-link-card-title">${escapeHtml(link.title)}</span>
@@ -404,7 +408,7 @@ function renderLocationCard(loc: LocationCard): string {
 /** Initialize MapLibre GL maps on location cards */
 export function initLocationMaps(container: HTMLElement) {
 	// Wait for layout: DOMParser-created elements need a frame to compute dimensions
-	requestAnimationFrame(() => {
+	window.requestAnimationFrame(() => {
 		const STYLE_URL = 'https://tiles.openfreemap.org/styles/bright';
 		const maps = container.querySelectorAll<HTMLElement>('.chat-location-map');
 
@@ -426,8 +430,8 @@ export function initLocationMaps(container: HTMLElement) {
 				new maplibregl.Marker({ color: '#e74c3c' })
 					.setLngLat([lng, lat])
 					.addTo(map);
-				(el as any)._maplibreglMap = map;
-			} catch (e) {
+				locationMaps.set(el, map);
+			} catch {
 				// Style/tile load failed — placeholder remains
 			}
 		});
@@ -437,9 +441,8 @@ export function initLocationMaps(container: HTMLElement) {
 /** Destroy all MapLibre GL maps in a container */
 export function destroyLocationMaps(container: HTMLElement) {
 	container.querySelectorAll<HTMLElement>('.chat-location-map').forEach(el => {
-		const map = (el as any)._maplibreglMap;
-		if (map && typeof map.remove === 'function') map.remove();
-		delete (el as any)._maplibreglMap;
+		locationMaps.get(el)?.remove();
+		locationMaps.delete(el);
 	});
 }
 
@@ -453,7 +456,7 @@ function renderPlainText(text: string): string {
 
 	// Convert Markdown links [text](url) → clickable <a>
 	result = result.replace(/\[(.+?)\]\(([^)]+)\)/g, (_m, linkText: string, url: string) => {
-		const safeUrl = escapeAttr(url);
+		const safeUrl = safeHrefAttr(url);
 		return `<a href="${safeUrl}" class="chat-link" target="_blank" rel="noopener">${linkText}</a>`;
 	});
 
@@ -463,34 +466,34 @@ function renderPlainText(text: string): string {
 		if (file.startsWith('RESOLVED:')) {
 			const uri = file.slice(9);
 			if (uri.startsWith('data:audio/')) {
-				return `<audio controls preload="auto" src="${escapeAttr(uri)}" class="chat-bare-audio" onerror="this.hidden=true"></audio>`;
+				return `<audio controls preload="auto" src="${escapeAttr(uri)}" class="chat-bare-audio"></audio>`;
 			}
 			if (uri.startsWith('data:video/')) {
-				return `<video controls preload="auto" src="${escapeAttr(uri)}" class="chat-bare-video" data-action="preview-media" data-type="video" data-uri="${escapeAttr(uri)}"  onerror="this.hidden=true"></video>`;
+				return `<video controls preload="auto" src="${escapeAttr(uri)}" class="chat-bare-video" data-action="preview-media" data-type="video" data-uri="${escapeAttr(uri)}"></video>`;
 			}
 			// Resource URIs (app://...) — check extension for audio/video
 			if (!uri.startsWith('data:')) {
 				const ext = uri.split('?')[0].split('.').pop()?.toLowerCase() || '';
 				if (AUDIO_EXTS.includes(ext)) {
-					return `<audio controls preload="auto" src="${escapeAttr(uri)}" class="chat-bare-audio" onerror="this.hidden=true"></audio>`;
+					return `<audio controls preload="auto" src="${escapeAttr(uri)}" class="chat-bare-audio"></audio>`;
 				}
 				if (VIDEO_EXTS.includes(ext)) {
-					return `<video controls preload="auto" src="${escapeAttr(uri)}" class="chat-bare-video" data-action="preview-media" data-type="video" data-uri="${escapeAttr(uri)}"  onerror="this.hidden=true"></video>`;
+					return `<video controls preload="auto" src="${escapeAttr(uri)}" class="chat-bare-video" data-action="preview-media" data-type="video" data-uri="${escapeAttr(uri)}"></video>`;
 				}
 			}
 			const width = w ? ` width="${w}"` : '';
-			return `<img src="${escapeAttr(uri)}" class="chat-bare-img"${width} loading="lazy" data-action="preview-media" data-type="img" data-uri="${escapeAttr(uri)}"  onerror="this.hidden=true">`;
+			return `<img src="${escapeAttr(uri)}" class="chat-bare-img"${width} loading="lazy" data-action="preview-media" data-type="img" data-uri="${escapeAttr(uri)}">`;
 		}
 
 		const ext = file.split('.').pop()?.toLowerCase() || '';
 		if (AUDIO_EXTS.includes(ext)) {
-			return `<audio controls preload="auto" src="${escapeAttr(safeEncodeURI(file))}" class="chat-bare-audio" onerror="this.hidden=true"></audio>`;
+			return `<audio controls preload="auto" src="${escapeAttr(safeEncodeURI(file))}" class="chat-bare-audio"></audio>`;
 		}
 		if (VIDEO_EXTS.includes(ext)) {
-			return `<video controls preload="auto" src="${escapeAttr(safeEncodeURI(file))}" class="chat-bare-video" data-action="preview-media" data-type="video" data-uri="${escapeAttr(safeEncodeURI(file))}"  onerror="this.hidden=true"></video>`;
+			return `<video controls preload="auto" src="${escapeAttr(safeEncodeURI(file))}" class="chat-bare-video" data-action="preview-media" data-type="video" data-uri="${escapeAttr(safeEncodeURI(file))}"></video>`;
 		}
 		const width = w ? ` width="${w}"` : '';
-		return `<img src="${escapeAttr(safeEncodeURI(file))}" class="chat-bare-img"${width} loading="lazy" data-action="preview-media" data-type="img" data-uri="${escapeAttr(safeEncodeURI(file))}"  onerror="this.hidden=true">`;
+		return `<img src="${escapeAttr(safeEncodeURI(file))}" class="chat-bare-img"${width} loading="lazy" data-action="preview-media" data-type="img" data-uri="${escapeAttr(safeEncodeURI(file))}">`;
 	});
 
 	return result;
@@ -562,7 +565,7 @@ function renderMergeForward(part: MergeForward, metaMap: Map<string, FileMeta>, 
 			cardHtml += `<div class="forward-item system"><span class="forward-plain">${escapeHtml(item.plain)}</span></div>`;
 			continue;
 		}
-		const { sender, time, content } = item as ForwardItem;
+		const { sender, time, content } = item;
 		const isSelf = isSelfMessage(sender, selfNames);
 		const side = isSelf ? 'self' : 'other';
 		cardHtml += `<div class="forward-item ${side}"><span class="forward-sender">${escapeHtml(sender)} <span class="forward-time">${escapeHtml(time)}</span></span>`;
@@ -633,6 +636,27 @@ function escapeHtml(str: string): string {
 /** Escape a value for use in an HTML attribute (double-quoted) */
 function escapeAttr(str: string): string {
 	return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+}
+
+function safeHrefAttr(url: string): string {
+	const trimmed = url.trim();
+	if (hasControlChar(trimmed)) return '#';
+
+	const schemeMatch = trimmed.match(/^([a-z][a-z0-9+.-]*):/i);
+	if (schemeMatch) {
+		const scheme = schemeMatch[1].toLowerCase();
+		if (!['http', 'https', 'mailto', 'obsidian'].includes(scheme)) return '#';
+	}
+
+	return escapeAttr(trimmed);
+}
+
+function hasControlChar(value: string): boolean {
+	for (let i = 0; i < value.length; i++) {
+		const code = value.charCodeAt(i);
+		if (code <= 0x1F || code === 0x7F) return true;
+	}
+	return false;
 }
 
 /** URL-encode path segments, preserving slashes */
