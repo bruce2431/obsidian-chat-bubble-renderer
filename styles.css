@@ -298,6 +298,19 @@
   flex-shrink: 0;
   font-weight: 500;
 }
+.chat-quote-forward {
+  color: #a1a6b0;
+  font-size: 13px;
+}
+.chat-quote-forward-ref {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-quote-forward-type {
+  margin-right: 0;
+}
 .chat-quote-thumb {
   width: 28px;
   height: 28px;
@@ -377,25 +390,75 @@
 
 /* ── 合并转发卡片 ── */
 .chat-forward-card {
-  background: var(--background-primary);
+  position: relative;
+  background: #f0f1f4;
   border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-  padding: 10px 12px;
+  box-shadow: none;
+  padding: 14px 16px 12px;
   width: 360px;
   cursor: pointer;
-  transition: background 0.15s ease, box-shadow 0.15s ease;
+  color: #1f2329;
+  transition: background 0.15s ease;
 }
 
 .chat-forward-card:hover {
-  background: var(--background-secondary);
-  box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+  background: #e9ebef;
 }
 
 .chat-forward-card .forward-title {
-  font-size: 13px;
-  font-weight: 600;
-  margin-bottom: 6px;
-  color: var(--text-normal);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.35;
+  margin-bottom: 8px;
+  color: #1f2329;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-msg.self .chat-forward-card::after,
+.chat-msg.other .chat-forward-card::after {
+  content: "";
+  position: absolute;
+  top: 18px;
+  width: 0;
+  height: 0;
+  border-top: 8px solid transparent;
+  border-bottom: 8px solid transparent;
+}
+
+.chat-msg.self .chat-forward-card::after {
+  right: -9px;
+  border-left: 10px solid #f0f1f4;
+}
+
+.chat-msg.other .chat-forward-card::after {
+  left: -9px;
+  border-right: 10px solid #f0f1f4;
+}
+
+.chat-msg.self .chat-forward-card:hover::after {
+  border-left-color: #e9ebef;
+}
+
+.chat-msg.other .chat-forward-card:hover::after {
+  border-right-color: #e9ebef;
+}
+
+.forward-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 14px;
+}
+
+.forward-preview-line {
+  color: #9ca1aa;
+  font-size: 12px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chat-forward-card .forward-item {
@@ -479,12 +542,12 @@
 
 .chat-forward-card .forward-expand {
   font-size: 12px;
-  color: var(--text-accent);
-  padding: 6px 0 2px;
-  text-align: center;
+  color: #9ca1aa;
+  padding: 0;
+  text-align: left;
   cursor: pointer;
-  border-top: 1px solid var(--background-modifier-border);
-  margin-top: 6px;
+  border-top: none;
+  margin-top: 0;
   transition: opacity 0.15s;
 }
 
@@ -610,6 +673,10 @@
 }
 
 /* ── 气泡内容区域 ── */
+.chat-bubble-host {
+  position: relative;
+}
+
 .chat-bubble-content {
   max-width: 800px;
   margin: 0 auto;
@@ -617,6 +684,10 @@
 }
 
 /* ── 名片卡片 ── */
+.chat-original-content {
+  display: none !important;
+}
+
 .chat-card .chat-file-icon-box {
   background: #4a90d9;
   font-size: 22px;

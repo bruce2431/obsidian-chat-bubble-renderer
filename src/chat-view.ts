@@ -590,6 +590,11 @@ function renderQuoteBar(sender: string, quote: string): string {
 		return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}</span>${preview}</div>`;
 	}
 
+	const forwardRefTitle = getForwardReferenceTitle(quote);
+	if (forwardRefTitle) {
+		return `<div class="chat-quote-bar chat-quote-forward"><span class="chat-quote-sender">${escapeHtml(sender)}:</span><span class="chat-quote-forward-ref"><span class="chat-quote-forward-type">[聊天记录]</span>${escapeHtml(forwardRefTitle)}</span></div>`;
+	}
+
 	const plainMatch = quote.match(/!\[\[(.+?)\]\]/);
 	if (plainMatch) {
 		const filename = plainMatch[1];
@@ -600,8 +605,9 @@ function renderQuoteBar(sender: string, quote: string): string {
 			return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}</span><span class="chat-quote-audio-bar" data-action="toggle-audio" data-audio-id="${uid}" ><span class="chat-quote-audio-icon">🔊</span>语音消息<audio id="${uid}" src="${escapeAttr(safeEncodeURI(filename))}" hidden preload="metadata"></audio></span></div>`;
 		}
 		if (IMAGE_EXTS.includes(ext)) return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}</span>[图片]</div>`;
-		const extUpper = (filename.split('.').pop() || '').toUpperCase();
-		if (!extUpper) return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}</span>${escapeHtml(filename)}</div>`;
+		const dot = filename.lastIndexOf('.');
+		if (dot <= 0) return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}</span>${escapeHtml(filename)}</div>`;
+		const extUpper = filename.slice(dot + 1).toUpperCase();
 		return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}</span><span class="chat-quote-file"><span class="chat-quote-file-icon">${escapeHtml(extUpper)}</span>${escapeHtml(filename)}</span></div>`;
 	}
 
@@ -611,10 +617,11 @@ function renderQuoteBar(sender: string, quote: string): string {
 function renderMergeForward(part: MergeForward, metaMap: Map<string, FileMeta>, selfNames?: string[]): string {
 	const uid = 'fw-' + Math.random().toString(36).slice(2, 8);
 
-	let cardHtml = '<div class="chat-forward-card">';
+	let cardHtml = `<div class="chat-forward-card" data-action="expand-forward" data-id="${uid}">`;
 	cardHtml += `<div class="forward-title">${escapeHtml(part.title)}</div>`;
 
-	cardHtml += `<div class="forward-expand" data-action="expand-forward" data-id="${uid}">查看全部聊天记录</div>`;
+	cardHtml += renderForwardPreview(part);
+	cardHtml += '<div class="forward-expand">聊天记录</div>';
 	cardHtml += '</div>';
 
 	// Hidden template — items rendered as mini bubbles
@@ -650,6 +657,57 @@ function renderMergeForward(part: MergeForward, metaMap: Map<string, FileMeta>, 
 // ────────────────────────────────────
 // 工具函数
 // ────────────────────────────────────
+
+function renderForwardPreview(part: MergeForward): string {
+	const rows = part.items
+		.filter((item): item is Exclude<typeof item, { plain: string }> => !('plain' in item))
+		.map(item => {
+			const summary = summarizeForwardContent(item.content);
+			return summary ? `${item.sender}: ${summary}` : `${item.sender}:`;
+		})
+		.filter(Boolean)
+		.slice(0, 4);
+
+	if (rows.length === 0) return '';
+	const suffix = part.items.length > rows.length ? '...' : '';
+	return '<div class="forward-preview">'
+		+ rows.map(row => `<div class="forward-preview-line">${escapeHtml(row)}</div>`).join('')
+		+ (suffix ? `<div class="forward-preview-line">${suffix}</div>` : '')
+		+ '</div>';
+}
+
+function summarizeForwardContent(content: string): string {
+	const text = content.trim().replace(/\s+/g, ' ');
+	if (!text) return '';
+
+	const typed = text.match(/^\[(语音|图片|视频|文件|位置|个人名片|名片|链接)(?:\|([^\]]+))?\]\s*(.*)$/);
+	if (typed) {
+		const label = typed[1];
+		const detail = typed[2] || typed[3] || '';
+		return detail ? `[${label}] ${detail}` : `[${label}]`;
+	}
+
+	if (/!\[\[.+?\]\]/.test(text)) {
+		const title = text.match(/!\[\[(.+?)\]\]/)?.[1] || '';
+		const ext = title.includes('.') ? title.split('.').pop()?.toLowerCase() : '';
+		if (ext && IMAGE_EXTS.includes(ext)) return '[图片]';
+		if (ext && VIDEO_EXTS.includes(ext)) return '[视频]';
+		if (ext && AUDIO_EXTS.includes(ext)) return '[语音]';
+		if (ext && FILE_EXTS.includes(ext)) return `[文件] ${title}`;
+		return title ? `[聊天记录]${title}` : '[聊天记录]';
+	}
+
+	return text;
+}
+
+function getForwardReferenceTitle(quote: string): string | null {
+	const match = quote.match(/!\[\[([^\]]+)(?:\]\])?/);
+	if (!match) return null;
+	const title = match[1].trim();
+	if (!title || title.includes('.') || title.startsWith('RESOLVED:')) return null;
+	if (title.includes('聊天记录')) return title;
+	return null;
+}
 
 /** Resolve a wikilink reference into display-friendly components */
 function resolveFileLink(filename: string): { displayName: string; uri: string; ext: string } {

@@ -142,11 +142,10 @@ export default class ChatBubblePlugin extends Plugin {
 				this.closeBubbles();
 
 						// Mark and hide original markdown preview content
-								const containerEl = view.containerEl as HTMLElement;
-								containerEl.style.position = 'relative';
+								const containerEl = view.containerEl;
+								containerEl.classList.add('chat-bubble-host');
 								for (const child of Array.from(containerEl.children)) {
 									child.classList.add('chat-original-content');
-									(child as HTMLElement).style.display = 'none';
 								}
 								const overlay = containerEl.createDiv({ cls: 'chat-bubble-overlay' });
 					const contentEl = overlay.createDiv({ cls: 'chat-bubble-content' });
@@ -169,8 +168,9 @@ export default class ChatBubblePlugin extends Plugin {
 				el.remove();
 				// Restore original content
 				if (parent) {
+					parent.classList.remove('chat-bubble-host');
 					parent.querySelectorAll('.chat-original-content').forEach(c => {
-						(c as HTMLElement).style.display = '';
+						c.classList.remove('chat-original-content');
 					});
 				}
 			});
