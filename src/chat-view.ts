@@ -601,6 +601,7 @@ function renderQuoteBar(sender: string, quote: string): string {
 		}
 		if (IMAGE_EXTS.includes(ext)) return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}</span>[图片]</div>`;
 		const extUpper = (filename.split('.').pop() || '').toUpperCase();
+		if (!extUpper) return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}</span>${escapeHtml(filename)}</div>`;
 		return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}</span><span class="chat-quote-file"><span class="chat-quote-file-icon">${escapeHtml(extUpper)}</span>${escapeHtml(filename)}</span></div>`;
 	}
 
@@ -643,7 +644,6 @@ function renderMergeForward(part: MergeForward, metaMap: Map<string, FileMeta>, 
 	}
 	cardHtml += '</div>';
 
-	cardHtml += '<div class="forward-footer">聊天记录</div>';
 	return cardHtml;
 }
 
