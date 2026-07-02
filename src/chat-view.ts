@@ -669,10 +669,11 @@ function renderForwardPreview(part: MergeForward): string {
 		.slice(0, 4);
 
 	if (rows.length === 0) return '';
-	const suffix = part.items.length > rows.length ? '...' : '';
+	if (part.items.length > rows.length) {
+		rows[rows.length - 1] += '...';
+	}
 	return '<div class="forward-preview">'
 		+ rows.map(row => `<div class="forward-preview-line">${escapeHtml(row)}</div>`).join('')
-		+ (suffix ? `<div class="forward-preview-line">${suffix}</div>` : '')
 		+ '</div>';
 }
 

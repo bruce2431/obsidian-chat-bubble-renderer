@@ -299,6 +299,7 @@
   font-weight: 500;
 }
 .chat-quote-forward {
+  display: inline-block;
   color: #a1a6b0;
   font-size: 13px;
 }
