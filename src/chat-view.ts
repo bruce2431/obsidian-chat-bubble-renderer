@@ -497,9 +497,17 @@ export function initLocationMaps(container: HTMLElement) {
 					container: el,
 					style: STYLE_URL,
 					center: [lng, lat],
-					zoom: isQuoteThumb ? 9 : 14,
+					zoom: isQuoteThumb ? 12 : 14,
 					interactive: false,
 					attributionControl: false,
+					pixelRatio: 2,
+				});
+				map.on('style.load', () => {
+					// Override park/grass opacity to stay visible at all zoom levels
+					for (const layer of ['park', 'landcover-grass', 'landcover-grass-park']) {
+						const cur = map.getLayer(layer);
+						if (cur) map.setPaintProperty(layer, 'fill-opacity', 0.5);
+					}
 				});
 				// Only add marker for full-size location cards (not tiny quote thumbs)
 				if (!isQuoteThumb) {
