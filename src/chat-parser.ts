@@ -34,6 +34,7 @@ export interface QuoteReply {
 	sender: string;
 	quote: string;
 	reply: string;
+	avatar?: string;  // card avatar image (peeked from next line)
 }
 
 export interface ForwardItem {
@@ -74,6 +75,7 @@ export interface Card {
 	alias?: string;   // 微信号:xxx (personal only)
 	sex?: string;     // personal only
 	region?: string;  // province/city
+	avatar?: string;  // ![[filename]] on next line
 }
 
 export interface ParseResult {
@@ -85,8 +87,10 @@ const HEADER_RE = /^\[(.*?)\]\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/;
 const QUOTE_REPLY_RE = /^>\s*\[(.+?)\]\s+(.+)/;
 const MERGE_FORWARD_RE = /^\[合并转发\|(.+?)\]/;
 const LINK_CARD_RE = /^\[链接\|([^\]]+)\]\((.+)\)$/;
+export { LINK_CARD_RE };
 export const LOCATION_RE = /^\[位置\|([^\]|]+)(?:\|([^\]|]*))?(?:\|([^\]|]*))?(?:\|([^\]|]*))?\]/;
 export const CARD_RE = /^\[名片\|([^\]|]+)(?:\|([^\]|]*))?(?:\|([^\]|]*))?(?:\|([^\]|]*))?\]/;
+export const QUOTE_CARD_RE = /^\[名片\](.+)/;  // quote format: [名片]昵称
 const INDENT_CONTENT_RE = /^\s{2,}(.+)/;
 /** Merge forward sender line: 名字 YYYY-M-D [上午/下午] H:MM[:SS] */
 const FORWARD_SENDER_RE = /^(.+?)\s+(\d{4}-\d{1,2}-\d{1,2}\s+(?:上午|下午|凌晨|中午)?\s*\d{1,2}:\d{2}(?::\d{2})?)/;
@@ -170,12 +174,23 @@ export function parseChatLog(markdown: string): ParseResult {
 				// Personal: [名片|昵称|微信号:xxx|性别|地区]  — 4 fields after nickname
 				// Official: [名片|昵称|地区]  — 2 fields after nickname
 				const isPersonal = f2.includes('微信号') || (!!f2 && !!f3);
+				// Peek next line for avatar image
+				let avatar: string | undefined;
+				if (i + 1 < lines.length) {
+					const next = lines[i + 1].trim();
+					const imgMatch = next.match(/^!\[\[(.+?)\]\]$/);
+					if (imgMatch) {
+						avatar = imgMatch[1];
+						i++; // consume avatar line
+					}
+				}
 				currentMsg.body.push({
 					type: 'card',
 					nickname,
 					alias: isPersonal ? f2 || undefined : undefined,
 					sex: isPersonal ? f3 || undefined : undefined,
 					region: isPersonal ? f4 || f2 || undefined : f2 || undefined,
+					avatar,
 				});
 				continue;
 			}
@@ -225,15 +240,21 @@ export function parseChatLog(markdown: string): ParseResult {
 				const sender = m[1];
 				const quote = m[2];
 				let replyContent = '';
+				let avatar: string | undefined;
 				let j = i + 1;
 				while (j < lines.length) {
 					const nl = lines[j].trim();
 					if (!nl || HEADER_RE.test(nl)) break;
+					// If quote is a card (pipe format or [名片]昵称) and next line is an image
+					if (!replyContent && !avatar && (CARD_RE.test(quote) || QUOTE_CARD_RE.test(quote))) {
+						const imgMatch = nl.match(/^!\[\[(.+?)\]\]$/);
+						if (imgMatch) { avatar = imgMatch[1]; j++; continue; }
+					}
 					if (replyContent) replyContent += NL;
 					replyContent += nl;
 					j++;
 				}
-				currentMsg.body.push({ type: 'quote-reply', sender, quote, reply: replyContent });
+				currentMsg.body.push({ type: 'quote-reply', sender, quote, reply: replyContent, avatar });
 				i = j - 1;
 				continue;
 			}

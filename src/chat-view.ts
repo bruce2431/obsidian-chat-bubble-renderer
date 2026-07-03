@@ -10,7 +10,7 @@
  * 不在 HTML 中嵌入 onclick — 安全且可维护。
  */
 
-import { parseChatLog, MergeForward, LinkCard, LocationCard, Card, LOCATION_RE } from './chat-parser';
+import { parseChatLog, MergeForward, LinkCard, LocationCard, Card, LOCATION_RE, CARD_RE, QUOTE_CARD_RE, LINK_CARD_RE } from './chat-parser';
 import maplibregl from 'maplibre-gl';
 
 const NL = String.fromCharCode(10);
@@ -230,7 +230,7 @@ export function renderChatLog(markdown: string, fileMetas?: FileMeta[], selfName
 				} else {
 					// quote-reply, merge-forward, or link-card — not system
 					if (part.type === 'quote-reply') {
-						quoteHtml = renderQuoteBar(part.sender, part.quote);
+						quoteHtml = renderQuoteBar(part.sender, part.quote, part.avatar);
 						textHtml += renderPlainText(part.reply);
 					} else if (part.type === 'merge-forward') {
 						forwardHtml += renderMergeForward(part, metaMap, selfNames);
@@ -370,10 +370,17 @@ function renderCard(card: Card): string {
 	const regionHtml = card.region ? `<span class="chat-card-tag region">${escapeHtml(card.region)}</span>` : '';
 	const tagLine = (tagHtml || regionHtml) ? `<div class="chat-card-tags">${tagHtml}${regionHtml}</div>` : '';
 
+	// Avatar: resolved URI from processContent (![[RESOLVED:...]]) or raw filename
+	let avatarSrc: string | undefined;
+	if (card.avatar) {
+		avatarSrc = card.avatar.startsWith('RESOLVED:') ? card.avatar.slice(9) : card.avatar;
+	}
+	const avatarHtml = avatarSrc
+		? `<div class="chat-file-icon"><img class="chat-card-avatar" src="${escapeAttr(avatarSrc)}" alt=""></div>`
+		: `<div class="chat-file-icon"><div class="chat-file-icon-box">${icon}</div></div>`;
+
 	return `<div class="chat-file-card chat-card">
-		<div class="chat-file-icon">
-			<div class="chat-file-icon-box">${icon}</div>
-		</div>
+		${avatarHtml}
 		<div class="chat-file-info">
 			<div class="chat-file-name">${escapeHtml(card.nickname)}</div>
 			${aliasHtml}
@@ -398,7 +405,7 @@ function renderLinkCard(link: LinkCard, isSelf: boolean): string {
 	const descLines = (link.desc || '').split('·').map(s => s.trim()).filter(Boolean);
 	const badge = domainBadge(domain);
 
-	// Rich card: left text + right square cover
+	// Rich card: left text (title top, desc middle, badge bottom) + right cover
 	if (hasCover) {
 		const descHtml = descLines.length
 			? descLines.map(l => `<div class="chat-link-desc-line">${escapeHtml(l)}</div>`).join('')
@@ -408,7 +415,7 @@ function renderLinkCard(link: LinkCard, isSelf: boolean): string {
 			<div class="chat-link-text">
 				<div class="chat-link-card-title">${escapeHtml(link.title)}</div>
 				${descHtml}
-				<div class="chat-link-badge">${badge}</div>
+				${badge ? `<div class="chat-link-badge">${badge}</div>` : ''}
 			</div>
 			<div class="chat-link-cover"><img src="${escapeAttr(link.cover!)}" alt="" loading="lazy"></div>
 		</a>`;
@@ -570,7 +577,7 @@ function renderPlainText(text: string): string {
 }
 
 /** 渲染引用条 */
-function renderQuoteBar(sender: string, quote: string): string {
+function renderQuoteBar(sender: string, quote: string, avatar?: string): string {
 	const mediaMatch = quote.match(/!\[\[RESOLVED:(.+?)\]\]/);
 	if (mediaMatch) {
 		const resolved = mediaMatch[1];
@@ -629,6 +636,37 @@ function renderQuoteBar(sender: string, quote: string): string {
 			: `<span class="chat-quote-location-marker">📍</span>${escapeHtml(addr)}`;
 
 		return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}</span>${preview}</div>`;
+	}
+
+	// Check for contact card reference: [名片|昵称|...] (pipe) or [名片]昵称 (quote)
+	const cardMatch = quote.match(CARD_RE);
+	const quoteCardMatch = !cardMatch ? quote.match(QUOTE_CARD_RE) : null;
+	const cardName = cardMatch ? cardMatch[1] : quoteCardMatch ? quoteCardMatch[1].trim() : null;
+	if (cardName) {
+		const isPersonal = cardMatch ? !!cardMatch[3] : true; // quote format assumes personal
+		// Use passed avatar if available (resolved URI from processContent)
+		let avatarSrc = avatar;
+		if (avatarSrc && avatarSrc.startsWith('RESOLVED:')) avatarSrc = avatarSrc.slice(9);
+		const avatarFmt = avatarSrc
+			? `<span class="chat-quote-card-avatar-img"><img src="${escapeAttr(avatarSrc)}" alt="" loading="lazy"></span>`
+			: `<span class="chat-quote-card-avatar">${isPersonal ? '👤' : '📢'}</span>`;
+		const fmt = `<span class="chat-quote-card-preview">${avatarFmt}<span class="chat-quote-card-name">${escapeHtml(cardName)}</span></span>`;
+		return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}:</span>${fmt}</div>`;
+	}
+
+	// Check for link card reference: [链接|标题|cover?|desc?](url)
+	const linkMatch = quote.match(LINK_CARD_RE);
+	if (linkMatch) {
+		const parts = linkMatch[1].split('|');
+		const hasRich = parts.length >= 2 && /^https?:\/\//i.test(parts[1].trim());
+		const title = hasRich ? parts[0] : linkMatch[1];
+		const cover = hasRich ? parts[1].trim() : '';
+		const desc = hasRich ? parts[2]?.trim() || '' : '';
+		const descHtml = desc ? `<span class="chat-quote-link-desc">${escapeHtml(desc)}</span>` : '';
+		const thumbHtml = cover
+			? `<div class="chat-quote-link-thumb"><img src="${escapeAttr(cover)}" alt="" loading="lazy"></div>`
+			: `<div class="chat-quote-link-thumb chat-quote-link-icon">🔗</div>`;
+		return `<div class="chat-quote-bar chat-quote-link-bar"><span class="chat-quote-sender">${escapeHtml(sender)}:</span><span class="chat-quote-link-body"><span class="chat-quote-link-title">${escapeHtml(title)}</span>${descHtml}</span>${thumbHtml}</div>`;
 	}
 
 	const forwardRefTitle = getForwardReferenceTitle(quote);
