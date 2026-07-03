@@ -391,18 +391,59 @@ function renderFileCardMini(ext: string, filename: string, uri: string): string 
 /** Render a WeChat-style link card — shared link with domain */
 function renderLinkCard(link: LinkCard, isSelf: boolean): string {
 	let domain = '';
-	try { domain = new URL(link.url).hostname; } catch {
-		// Leave the domain blank for malformed links; the card itself still renders.
-	}
+	try { domain = new URL(link.url).hostname; } catch {}
 
 	const sideClass = isSelf ? 'self' : 'other';
+	const hasCover = !!link.cover;
+	const descLines = (link.desc || '').split('·').map(s => s.trim()).filter(Boolean);
+	const badge = domainBadge(domain);
+
+	// Rich card: left text + right square cover
+	if (hasCover) {
+		const descHtml = descLines.length
+			? descLines.map(l => `<div class="chat-link-desc-line">${escapeHtml(l)}</div>`).join('')
+			: `<div class="chat-link-desc-line">${escapeHtml(domain)}</div>`;
+
+		return `<a href="${safeHrefAttr(link.url)}" class="chat-link-card chat-link-card-rich ${sideClass}" target="_blank" rel="noopener">
+			<div class="chat-link-text">
+				<div class="chat-link-card-title">${escapeHtml(link.title)}</div>
+				${descHtml}
+				<div class="chat-link-badge">${badge}</div>
+			</div>
+			<div class="chat-link-cover"><img src="${escapeAttr(link.cover!)}" alt="" loading="lazy"></div>
+		</a>`;
+	}
+
+	// Simple card: left text + right 🔗 icon
+	const iconBox = `<span class="chat-link-card-icon">🔗</span>`;
 	return `<a href="${safeHrefAttr(link.url)}" class="chat-link-card ${sideClass}" target="_blank" rel="noopener">
-		<span class="chat-link-card-icon">🔗</span>
-		<span class="chat-link-card-body">
-			<span class="chat-link-card-title">${escapeHtml(link.title)}</span>
-			<span class="chat-link-card-domain">${escapeHtml(domain)}</span>
-		</span>
+		<div class="chat-link-text">
+			<div class="chat-link-card-title">${escapeHtml(link.title)}</div>
+			<div class="chat-link-badge">${badge}</div>
+		</div>
+		${iconBox}
 	</a>`;
+}
+
+function domainBadge(domain: string): string {
+	const d = domain.toLowerCase();
+	if (d.includes('bilibili.com') || d.includes('b23.tv'))
+		return `<span class="chat-badge-icon chat-badge-bilibili">bilibili</span><span class="chat-badge-label">哔哩哔哩</span>`;
+	if (d.includes('music.163.com'))
+		return `<span class="chat-badge-icon chat-badge-netease">N</span><span class="chat-badge-label">网易云音乐</span>`;
+	if (d.includes('lofter.com'))
+		return `<span class="chat-badge-icon chat-badge-lofter">L</span><span class="chat-badge-label">LOFTER</span>`;
+	if (d.includes('shuidichou.com'))
+		return `<span class="chat-badge-icon chat-badge-shuidi">💧</span><span class="chat-badge-label">水滴筹</span>`;
+	if (d.includes('wjx.top') || d.includes('wjx.cn'))
+		return `<span class="chat-badge-icon chat-badge-wjx">📋</span><span class="chat-badge-label">问卷星</span>`;
+	if (d.includes('meeting.tencent.com'))
+		return `<span class="chat-badge-icon chat-badge-tencent">🎥</span><span class="chat-badge-label">腾讯会议</span>`;
+	if (d.includes('weixin.qq.com'))
+		return `<span class="chat-badge-icon chat-badge-wechat">💬</span><span class="chat-badge-label">微信</span>`;
+	if (d.includes('mp.weixin.qq.com'))
+		return `<span class="chat-badge-icon chat-badge-wechat">📱</span><span class="chat-badge-label">小程序</span>`;
+	return `<span class="chat-badge-domain">${escapeHtml(domain)}</span>`;
 }
 
 /** Render a WeChat-style location card */

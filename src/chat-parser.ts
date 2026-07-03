@@ -56,6 +56,8 @@ export interface LinkCard {
 	type: 'link-card';
 	title: string;
 	url: string;
+	cover?: string;  // optional cover image URL (e.g. bilibili thumbnail)
+	desc?: string;   // optional description (e.g. author·duration·views)
 }
 
 export interface LocationCard {
@@ -82,7 +84,7 @@ export interface ParseResult {
 const HEADER_RE = /^\[(.*?)\]\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/;
 const QUOTE_REPLY_RE = /^>\s*\[(.+?)\]\s+(.+)/;
 const MERGE_FORWARD_RE = /^\[合并转发\|(.+?)\]/;
-const LINK_CARD_RE = /^\[链接\|(.+?)\]\((.+)\)$/;
+const LINK_CARD_RE = /^\[链接\|([^\]]+)\]\((.+)\)$/;
 export const LOCATION_RE = /^\[位置\|([^\]|]+)(?:\|([^\]|]*))?(?:\|([^\]|]*))?(?:\|([^\]|]*))?\]/;
 export const CARD_RE = /^\[名片\|([^\]|]+)(?:\|([^\]|]*))?(?:\|([^\]|]*))?(?:\|([^\]|]*))?\]/;
 const INDENT_CONTENT_RE = /^\s{2,}(.+)/;
@@ -122,7 +124,15 @@ export function parseChatLog(markdown: string): ParseResult {
 			// ── Link card ──
 			const linkMatch = trimmed.match(LINK_CARD_RE);
 			if (linkMatch) {
-				currentMsg.body.push({ type: 'link-card', title: linkMatch[1], url: linkMatch[2] });
+				const parts = linkMatch[1].split('|');
+					const hasRich = parts.length >= 2 && /^https?:\/\//i.test(parts[1].trim());
+					currentMsg.body.push({
+						type: 'link-card',
+						title: hasRich ? parts[0] : linkMatch[1],
+						url: linkMatch[2],
+						cover: hasRich ? parts[1].trim() : undefined,
+						desc: hasRich ? parts[2]?.trim() || undefined : undefined,
+					});
 				continue;
 			}
 
