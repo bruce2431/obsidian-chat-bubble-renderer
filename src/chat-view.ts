@@ -332,6 +332,53 @@ function classifyAndRender(content: string, metaMap: Map<string, FileMeta>): { h
 	return { html: renderPlainText(content), type };
 }
 
+/** Parse [位置|label|city|lat|lng] string into LocationCard */
+function parseLocationString(content: string): LocationCard | null {
+	const m = content.trim().match(LOCATION_RE);
+	if (!m) return null;
+	const label = m[1];
+	const city = m[2] || undefined;
+	let lat: number | undefined;
+	let lng: number | undefined;
+	const c3 = m[3];
+	const c4 = m[4];
+	if (c3 && c4) { lat = parseFloat(c3); lng = parseFloat(c4); }
+	else if (c3 && c3.includes(',')) { const [a, b] = c3.split(','); lng = parseFloat(a); lat = parseFloat(b); }
+	return { type: 'location', label, city, lat, lng };
+}
+
+/** Parse [名片|nickname|alias|sex|region] string into Card */
+function parseCardString(content: string): Card | null {
+	const m = content.trim().match(CARD_RE);
+	if (!m) return null;
+	const f2 = m[2] || '';
+	const f3 = m[3] || '';
+	const f4 = m[4] || '';
+	const isPersonal = f2.includes('微信号') || (!!f2 && !!f3);
+	return {
+		type: 'card',
+		nickname: m[1],
+		alias: isPersonal ? f2 || undefined : undefined,
+		sex: isPersonal ? f3 || undefined : undefined,
+		region: isPersonal ? (f4 || f2 || undefined) : (f2 || undefined),
+	};
+}
+
+/** Parse [链接|title|cover?|desc?](url) string into LinkCard */
+function parseLinkString(content: string): LinkCard | null {
+	const m = content.trim().match(LINK_CARD_RE);
+	if (!m) return null;
+	const parts = m[1].split('|');
+	const hasRich = parts.length >= 2 && /^https?:\/\//i.test(parts[1].trim());
+	return {
+		type: 'link-card',
+		title: hasRich ? parts[0] : m[1],
+		url: m[2],
+		cover: hasRich ? parts[1].trim() : undefined,
+		desc: hasRich ? parts[2]?.trim() || undefined : undefined,
+	};
+}
+
 /** Render a file attachment as a card — PDF preview via event delegation */
 function renderFileCard(part: string, metaMap: Map<string, FileMeta>): string {
 	const match = part.match(/!\[\[(.+?)\]\]/);
@@ -725,14 +772,28 @@ function renderMergeForward(part: MergeForward, metaMap: Map<string, FileMeta>, 
 		cardHtml += `<div class="forward-item ${side}"><span class="forward-sender">${escapeHtml(sender)} <span class="forward-time">${escapeHtml(time)}</span></span>`;
 
 		const sr = classifyAndRender(content, metaMap);
-		if (sr.type === 'file') {
-			const raw = content.match(/!\[\[(.+?)\]\]/)?.[1] || '';
-			const { displayName, uri, ext } = resolveFileLink(raw);
-			cardHtml += `<div class="forward-media">${renderFileCardMini(ext, displayName, uri)}</div>`;
-		} else if (sr.type === 'media') {
-			cardHtml += `<div class="forward-media">${sr.html}</div>`;
+		// ── Card formats: location, contact, link — same as main chat ──
+		const locObj = parseLocationString(content);
+		if (locObj) {
+			cardHtml += renderLocationCard(locObj);
 		} else {
-			cardHtml += `<div class="forward-bubble">${sr.html}</div>`;
+			const cardObj = parseCardString(content);
+			if (cardObj) {
+				cardHtml += renderCard(cardObj);
+			} else {
+				const linkObj = parseLinkString(content);
+				if (linkObj) {
+					cardHtml += renderLinkCard(linkObj, isSelf);
+				} else if (sr.type === 'file') {
+					const raw = content.match(/!\[\[(.+?)\]\]/)?.[1] || '';
+					const { displayName, uri, ext } = resolveFileLink(raw);
+					cardHtml += `<div class="forward-media">${renderFileCardMini(ext, displayName, uri)}</div>`;
+				} else if (sr.type === 'media') {
+					cardHtml += `<div class="forward-media">${sr.html}</div>`;
+				} else {
+					cardHtml += `<div class="forward-bubble">${sr.html}</div>`;
+				}
+			}
 		}
 		cardHtml += '</div>';
 	}
