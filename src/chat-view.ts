@@ -147,6 +147,9 @@ function openPdfOverlay(uri: string) {
 	activeDocument.body.appendChild(overlay);
 }
 
+/** Navigation stack for nested merge-forward overlays */
+const fwStackMap = new WeakMap<HTMLElement, DocumentFragment[]>();
+
 function openForwardOverlay(container: HTMLElement, templateId: string) {
 	const template = container.querySelector<HTMLElement>(`#${templateId}`);
 	if (!template) return;
@@ -155,13 +158,15 @@ function openForwardOverlay(container: HTMLElement, templateId: string) {
 
 	let overlay = activeDocument.querySelector<HTMLElement>('.chat-forward-overlay');
 	let modal: HTMLElement;
-	let stack: string[];
 
 	if (overlay) {
-		// Already open — push current state onto stack
+		// Already open — push current children onto stack
 		modal = overlay.querySelector<HTMLElement>('.chat-forward-modal')!;
-		stack = (modal as any).__fwStack || [];
-		stack.push(modal.innerHTML);
+		const stack = fwStackMap.get(modal) || [];
+		const frag = activeDocument.createDocumentFragment();
+		while (modal.firstChild) frag.appendChild(modal.firstChild);
+		stack.push(frag);
+		fwStackMap.set(modal, stack);
 	} else {
 		overlay = activeDocument.createElement('div');
 		overlay.className = 'chat-forward-overlay';
@@ -170,12 +175,9 @@ function openForwardOverlay(container: HTMLElement, templateId: string) {
 		modal.className = 'chat-forward-modal';
 		overlay.appendChild(modal);
 		activeDocument.body.appendChild(overlay);
-		stack = [];
 	}
 
-	(modal as any).__fwStack = stack;
-	modal.innerHTML = '';
-	modal.appendChild(clone);
+	modal.replaceChildren(clone);
 	setupChatBubbleEvents(modal);
 	initLocationMaps(modal);
 }
@@ -184,10 +186,10 @@ function popForwardOrClose() {
 	const overlay = activeDocument.querySelector<HTMLElement>('.chat-forward-overlay');
 	if (!overlay) return;
 	const modal = overlay.querySelector<HTMLElement>('.chat-forward-modal')!;
-	const stack = (modal as any).__fwStack || [];
+	const stack = fwStackMap.get(modal) || [];
 	if (stack.length > 0) {
-		modal.innerHTML = stack.pop()!;
-		(modal as any).__fwStack = stack;
+		modal.replaceChildren(stack.pop()!);
+		fwStackMap.set(modal, stack);
 		setupChatBubbleEvents(modal);
 		initLocationMaps(modal);
 	} else {
@@ -470,17 +472,10 @@ function renderCard(card: Card): string {
 		</div>
 	</div>`;
 }
-function renderFileCardMini(ext: string, filename: string, uri: string): string {
-	const actionAttr = ext === 'PDF' && uri
-		? ` data-action="preview-pdf" data-uri="${escapeAttr(uri)}"`
-		: '';
-	return `<span class="forward-file-card"${actionAttr}><span class="chat-quote-file-icon">${escapeHtml(ext)}</span>${escapeHtml(filename)}</span>`;
-}
 
-/** Render a WeChat-style link card — shared link with domain */
 function renderLinkCard(link: LinkCard, isSelf: boolean): string {
 	let domain = '';
-	try { domain = new URL(link.url).hostname; } catch {}
+	try { domain = new URL(link.url).hostname; } catch { /* invalid URL — leave domain empty */ }
 
 	const sideClass = isSelf ? 'self' : 'other';
 	const hasCover = !!link.cover;
@@ -827,7 +822,7 @@ function renderForwardTemplate(
 			continue;
 		}
 
-		const content = item.content as string;
+		const content = item.content;
 		const sr = classifyAndRender(content, metaMap);
 
 		// ── Quote reply ──
