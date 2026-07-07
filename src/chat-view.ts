@@ -858,9 +858,7 @@ function renderForwardTemplate(
 					if (linkObj) {
 						html += renderLinkCard(linkObj, isSelf);
 					} else if (sr.type === 'file') {
-						const raw = content.match(/!\[\[(.+?)\]\]/)?.[1] || '';
-						const { displayName, uri, ext } = resolveFileLink(raw);
-						html += `<div class="forward-media">${renderFileCardMini(ext, displayName, uri)}</div>`;
+							html += renderFileCard(content, metaMap);
 					} else if (sr.type === 'media') {
 						html += `<div class="forward-media">${sr.html}</div>`;
 					} else {
