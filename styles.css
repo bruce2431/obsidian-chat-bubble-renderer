@@ -322,9 +322,11 @@
 }
 
 .chat-bare-video {
-  display: block;
+  display: inline-block;
   max-width: 280px;
   max-height: 200px;
+  width: auto;
+  height: auto;
   border-radius: 8px;
   cursor: pointer;
 }
@@ -706,6 +708,59 @@
 
 .chat-forward-card .forward-item:last-child {
   border-bottom: none;
+}
+
+/* Scale cards inside merge-forward proportionally (12/14 ≈ 0.85) + side alignment + reset text */
+.forward-item .chat-location-card,
+.forward-item .chat-card,
+.forward-item .chat-link-card {
+  transform: scale(0.85);
+  text-align: left;
+}
+.forward-item.other .chat-location-card,
+.forward-item.other .chat-card,
+.forward-item.other .chat-link-card {
+  transform-origin: top left;
+  margin-right: auto;
+}
+.forward-item.self .chat-location-card,
+.forward-item.self .chat-card,
+.forward-item.self .chat-link-card {
+  transform-origin: top right;
+  margin-left: auto;
+}
+
+/* Scale down voice bubble in merge-forward */
+.forward-item .chat-audio-msg {
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  margin-top: 2px;
+  display: block;
+  width: fit-content;
+}
+.forward-item .chat-audio-msg .chat-audio-icon {
+  font-size: 12px;
+}
+
+/* Scale down quote audio bar in merge-forward */
+.forward-item .chat-quote-audio-bar {
+  font-size: 10px;
+  padding: 2px 8px;
+  gap: 4px;
+}
+.forward-item .chat-quote-audio-icon {
+  font-size: 11px;
+}
+.forward-item .chat-audio-msg.self {
+  margin-left: auto;
+}
+
+/* Ensure video scales naturally in merge-forward */
+.forward-media .chat-bare-video {
+  max-width: 200px;
+  max-height: 150px;
+  height: auto;
 }
 
 .chat-forward-card .forward-expand {

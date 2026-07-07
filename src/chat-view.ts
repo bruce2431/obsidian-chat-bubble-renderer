@@ -165,6 +165,7 @@ function openForwardOverlay(container: HTMLElement, templateId: string) {
 
 	// Re-bind event delegation on the modal so media/PDF clicks inside the popup work
 	setupChatBubbleEvents(modal);
+	initLocationMaps(modal);
 }
 
 // ────────────────────────────────────
@@ -349,18 +350,25 @@ function parseLocationString(content: string): LocationCard | null {
 
 /** Parse [名片|nickname|alias|sex|region] string into Card */
 function parseCardString(content: string): Card | null {
-	const m = content.trim().match(CARD_RE);
+	const trimmed = content.trim();
+	const m = trimmed.match(CARD_RE);
 	if (!m) return null;
 	const f2 = m[2] || '';
 	const f3 = m[3] || '';
 	const f4 = m[4] || '';
 	const isPersonal = f2.includes('微信号') || (!!f2 && !!f3);
+	// Extract trailing avatar: [名片|...]![[RESOLVED:...]]
+	let avatar: string | undefined;
+	const after = trimmed.slice(m[0].length);
+	const imgMatch = after.match(/^!\[\[(.+?)\]\]/);
+	if (imgMatch) avatar = imgMatch[1];
 	return {
 		type: 'card',
 		nickname: m[1],
 		alias: isPersonal ? f2 || undefined : undefined,
 		sex: isPersonal ? f3 || undefined : undefined,
 		region: isPersonal ? (f4 || f2 || undefined) : (f2 || undefined),
+		avatar,
 	};
 }
 
@@ -772,26 +780,43 @@ function renderMergeForward(part: MergeForward, metaMap: Map<string, FileMeta>, 
 		cardHtml += `<div class="forward-item ${side}"><span class="forward-sender">${escapeHtml(sender)} <span class="forward-time">${escapeHtml(time)}</span></span>`;
 
 		const sr = classifyAndRender(content, metaMap);
-		// ── Card formats: location, contact, link — same as main chat ──
-		const locObj = parseLocationString(content);
-		if (locObj) {
-			cardHtml += renderLocationCard(locObj);
+
+		// ── Quote reply (same format as main chat) ──
+		const QUOTE_RE = /^>\s*\[(.+?)\]\s+(.+)/;
+		const quoteMatch = content.match(QUOTE_RE);
+		if (quoteMatch) {
+			const qSender = quoteMatch[1];
+			const qText = quoteMatch[2];
+			const reply = content.slice(quoteMatch[0].length).trim();
+			if (reply) {
+				cardHtml += `<div class="forward-bubble">${renderPlainText(reply)}</div>`;
+			}
+			cardHtml += renderQuoteBar(qSender, qText);
+		// ── Audio: voice bubble (check before card formats) ──
+		} else if (isAudioMedia(content)) {
+			cardHtml += renderAudioBubble(content, side);
+		// ── Card formats: location, contact, link ──
 		} else {
-			const cardObj = parseCardString(content);
-			if (cardObj) {
-				cardHtml += renderCard(cardObj);
+			const locObj = parseLocationString(content);
+			if (locObj) {
+				cardHtml += renderLocationCard(locObj);
 			} else {
-				const linkObj = parseLinkString(content);
-				if (linkObj) {
-					cardHtml += renderLinkCard(linkObj, isSelf);
-				} else if (sr.type === 'file') {
-					const raw = content.match(/!\[\[(.+?)\]\]/)?.[1] || '';
-					const { displayName, uri, ext } = resolveFileLink(raw);
-					cardHtml += `<div class="forward-media">${renderFileCardMini(ext, displayName, uri)}</div>`;
-				} else if (sr.type === 'media') {
-					cardHtml += `<div class="forward-media">${sr.html}</div>`;
+				const cardObj = parseCardString(content);
+				if (cardObj) {
+					cardHtml += renderCard(cardObj);
 				} else {
-					cardHtml += `<div class="forward-bubble">${sr.html}</div>`;
+					const linkObj = parseLinkString(content);
+					if (linkObj) {
+						cardHtml += renderLinkCard(linkObj, isSelf);
+					} else if (sr.type === 'file') {
+						const raw = content.match(/!\[\[(.+?)\]\]/)?.[1] || '';
+						const { displayName, uri, ext } = resolveFileLink(raw);
+						cardHtml += `<div class="forward-media">${renderFileCardMini(ext, displayName, uri)}</div>`;
+					} else if (sr.type === 'media') {
+						cardHtml += `<div class="forward-media">${sr.html}</div>`;
+					} else {
+						cardHtml += `<div class="forward-bubble">${sr.html}</div>`;
+					}
 				}
 			}
 		}
@@ -829,6 +854,9 @@ function summarizeForwardContent(content: string): string {
 	const text = content.trim().replace(/\s+/g, ' ');
 	if (!text) return '';
 
+	// Quote reply → simplified
+	if (/^>/.test(text)) return '[引用]';
+
 	const typed = text.match(/^\[(语音|图片|视频|文件|位置|个人名片|名片|链接)(?:\|([^\]]+))?\]\s*(.*)$/);
 	if (typed) {
 		const label = typed[1];
@@ -838,6 +866,21 @@ function summarizeForwardContent(content: string): string {
 
 	if (/!\[\[.+?\]\]/.test(text)) {
 		const title = text.match(/!\[\[(.+?)\]\]/)?.[1] || '';
+		// RESOLVED:data:audio/..., data:video/..., data:image/...
+		if (/^RESOLVED:data:audio\//i.test(title)) return '[语音]';
+		if (/^RESOLVED:data:video\//i.test(title)) return '[视频]';
+		if (/^RESOLVED:data:image\//i.test(title)) return '[图片]';
+		// RESOLVED:app://... — check extension in path
+		if (/^RESOLVED:app:\/\//i.test(title)) {
+			const path = title.replace(/^RESOLVED:/, '').split('?')[0];
+			const ext = path.split('.').pop()?.toLowerCase() || '';
+			if (ext && IMAGE_EXTS.includes(ext)) return '[图片]';
+			if (ext && VIDEO_EXTS.includes(ext)) return '[视频]';
+			if (ext && AUDIO_EXTS.includes(ext)) return '[语音]';
+			if (ext && FILE_EXTS.includes(ext)) return `[文件] ${decodeURIComponent(path.split('/').pop()?.split('?')[0] || path)}`;
+			return '[文件]';
+		}
+		// Plain wikilink (not yet RESOLVED)
 		const ext = title.includes('.') ? title.split('.').pop()?.toLowerCase() : '';
 		if (ext && IMAGE_EXTS.includes(ext)) return '[图片]';
 		if (ext && VIDEO_EXTS.includes(ext)) return '[视频]';
