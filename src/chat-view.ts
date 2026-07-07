@@ -401,18 +401,18 @@ function parseCardString(content: string): Card | null {
 	};
 }
 
-/** Parse [链接|title|cover?|desc?](url) string into LinkCard */
+/** Parse [链接|小程序|title|cover?|desc?](url) string into LinkCard */
 function parseLinkString(content: string): LinkCard | null {
 	const m = content.trim().match(LINK_CARD_RE);
 	if (!m) return null;
 	const parts = m[1].split('|');
-	const hasRich = parts.length >= 2 && /^https?:\/\//i.test(parts[1].trim());
+	const secondIsUrl = parts.length >= 2 && /^https?:\/\//i.test(parts[1].trim());
 	return {
 		type: 'link-card',
-		title: hasRich ? parts[0] : m[1],
+		title: parts[0],
 		url: m[2],
-		cover: hasRich ? parts[1].trim() : undefined,
-		desc: hasRich ? parts[2]?.trim() || undefined : undefined,
+		cover: secondIsUrl ? parts[1].trim() : undefined,
+		desc: secondIsUrl ? parts[2]?.trim() || undefined : (parts.length >= 2 ? parts[1] : undefined),
 	};
 }
 
@@ -479,14 +479,20 @@ function renderLinkCard(link: LinkCard, isSelf: boolean): string {
 
 	const sideClass = isSelf ? 'self' : 'other';
 	const hasCover = !!link.cover;
-	const descLines = (link.desc || '').split('·').map(s => s.trim()).filter(Boolean);
+	const rawLines = (link.desc || '').split('·').map(s => s.trim()).filter(Boolean);
+	const descLines = rawLines.length > 4 ? [...rawLines.slice(0, 3), '...'] : rawLines;
 	const badge = domainBadge(domain);
+	const isRich = hasCover || descLines.length > 0;
 
-	// Rich card: left text (title top, desc middle, badge bottom) + right cover
-	if (hasCover) {
+	// Rich card: left text (title top, desc middle, badge bottom) + optional right cover
+	if (isRich) {
 		const descHtml = descLines.length
 			? descLines.map(l => `<div class="chat-link-desc-line">${escapeHtml(l)}</div>`).join('')
 			: `<div class="chat-link-desc-line">${escapeHtml(domain)}</div>`;
+
+		const coverHtml = hasCover
+			? `<div class="chat-link-cover"><img src="${escapeAttr(link.cover!)}" alt="" loading="lazy" onerror="this.style.display='none'"></div>`
+			: `<span class="chat-link-card-icon">🔗</span>`;
 
 		return `<a href="${safeHrefAttr(link.url)}" class="chat-link-card chat-link-card-rich ${sideClass}" target="_blank" rel="noopener">
 			<div class="chat-link-text">
@@ -494,7 +500,7 @@ function renderLinkCard(link: LinkCard, isSelf: boolean): string {
 				${descHtml}
 				${badge ? `<div class="chat-link-badge">${badge}</div>` : ''}
 			</div>
-			<div class="chat-link-cover"><img src="${escapeAttr(link.cover!)}" alt="" loading="lazy"></div>
+			${coverHtml}
 		</a>`;
 	}
 
@@ -512,22 +518,24 @@ function renderLinkCard(link: LinkCard, isSelf: boolean): string {
 function domainBadge(domain: string): string {
 	const d = domain.toLowerCase();
 	if (d.includes('bilibili.com') || d.includes('b23.tv'))
-		return `<span class="chat-badge-icon chat-badge-bilibili">bilibili</span><span class="chat-badge-label">哔哩哔哩</span>`;
+		return `<span class="chat-badge-icon chat-badge-bilibili"></span><span class="chat-badge-label">哔哩哔哩</span>`;
 	if (d.includes('music.163.com'))
-		return `<span class="chat-badge-icon chat-badge-netease">N</span><span class="chat-badge-label">网易云音乐</span>`;
-	if (d.includes('lofter.com'))
-		return `<span class="chat-badge-icon chat-badge-lofter">L</span><span class="chat-badge-label">LOFTER</span>`;
-	if (d.includes('shuidichou.com'))
-		return `<span class="chat-badge-icon chat-badge-shuidi">💧</span><span class="chat-badge-label">水滴筹</span>`;
-	if (d.includes('wjx.top') || d.includes('wjx.cn'))
-		return `<span class="chat-badge-icon chat-badge-wjx">📋</span><span class="chat-badge-label">问卷星</span>`;
-	if (d.includes('meeting.tencent.com'))
-		return `<span class="chat-badge-icon chat-badge-tencent">🎥</span><span class="chat-badge-label">腾讯会议</span>`;
+		return `<span class="chat-badge-icon chat-badge-netease"></span><span class="chat-badge-label">网易云音乐</span>`;
+	if (d.includes('xiaohongshu.com') || d.includes('xhslink.com'))
+		return `<span class="chat-badge-icon chat-badge-xiaohongshu"></span><span class="chat-badge-label">小红书</span>`;
 	if (d.includes('weixin.qq.com'))
-		return `<span class="chat-badge-icon chat-badge-wechat">💬</span><span class="chat-badge-label">微信</span>`;
+		return `<span class="chat-badge-icon chat-badge-wechat"></span><span class="chat-badge-label">微信</span>`;
 	if (d.includes('mp.weixin.qq.com'))
-		return `<span class="chat-badge-icon chat-badge-wechat">📱</span><span class="chat-badge-label">小程序</span>`;
-	return `<span class="chat-badge-domain">${escapeHtml(domain)}</span>`;
+		return `<span class="chat-badge-icon chat-badge-wechat"></span><span class="chat-badge-label">小程序</span>`;
+	if (d.includes('q.qq.com') || d.includes('kandian.qq.com'))
+		return `<span class="chat-badge-icon chat-badge-qq"></span><span class="chat-badge-label">QQ看点</span>`;
+	if (d.includes('qq.com'))
+		return `<span class="chat-badge-icon chat-badge-qq"></span><span class="chat-badge-label">QQ</span>`;
+	if (d.includes('lofter.com'))
+		return `<span class="chat-badge-text chat-badge-lofter">L</span><span class="chat-badge-label">LOFTER</span>`;
+	if (d.includes('meeting.tencent.com'))
+		return `<span class="chat-badge-icon chat-badge-tencent-meeting"></span><span class="chat-badge-label">腾讯会议</span>`;
+	return `<span class="chat-badge-icon chat-badge-default"></span><span class="chat-badge-domain">${escapeHtml(domain)}</span>`;
 }
 
 /** Render a WeChat-style location card */
@@ -739,14 +747,14 @@ function renderQuoteBar(sender: string, quote: string, avatar?: string): string 
 		return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}:</span>${fmt}</div>`;
 	}
 
-	// Check for link card reference: [链接|标题|cover?|desc?](url)
+	// Check for link card reference: [链接|小程序|标题|cover?|desc?](url)
 	const linkMatch = quote.match(LINK_CARD_RE);
 	if (linkMatch) {
 		const parts = linkMatch[1].split('|');
-		const hasRich = parts.length >= 2 && /^https?:\/\//i.test(parts[1].trim());
-		const title = hasRich ? parts[0] : linkMatch[1];
-		const cover = hasRich ? parts[1].trim() : '';
-		const desc = hasRich ? parts[2]?.trim() || '' : '';
+		const secondIsUrl = parts.length >= 2 && /^https?:\/\//i.test(parts[1].trim());
+		const title = parts[0];
+		const cover = secondIsUrl ? parts[1].trim() : '';
+		const desc = secondIsUrl ? parts[2]?.trim() || '' : (parts.length >= 2 ? parts[1] : '');
 		const descHtml = desc ? `<span class="chat-quote-link-desc">${escapeHtml(desc)}</span>` : '';
 		const thumbHtml = cover
 			? `<div class="chat-quote-link-thumb"><img src="${escapeAttr(cover)}" alt="" loading="lazy"></div>`

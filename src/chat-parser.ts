@@ -86,7 +86,7 @@ export interface ParseResult {
 const HEADER_RE = /^\[(.*?)\]\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/;
 const QUOTE_REPLY_RE = /^>\s*\[(.+?)\]\s+(.+)/;
 const MERGE_FORWARD_RE = /^\[合并转发\|(.+?)\]/;
-const LINK_CARD_RE = /^\[链接\|([^\]]+)\]\((.+)\)$/;
+const LINK_CARD_RE = /^\[(?:链接|小程序)\|([^\]]+)\]\((.+)\)$/;
 export { LINK_CARD_RE };
 export const LOCATION_RE = /^\[位置\|([^\]|]+)(?:\|([^\]|]*))?(?:\|([^\]|]*))?(?:\|([^\]|]*))?\]/;
 export const CARD_RE = /^\[名片\|([^\]|]+)(?:\|([^\]|]*))?(?:\|([^\]|]*))?(?:\|([^\]|]*))?\]/;
@@ -177,14 +177,14 @@ export function parseChatLog(markdown: string): ParseResult {
 			const linkMatch = trimmed.match(LINK_CARD_RE);
 			if (linkMatch) {
 				const parts = linkMatch[1].split('|');
-					const hasRich = parts.length >= 2 && /^https?:\/\//i.test(parts[1].trim());
-					currentMsg.body.push({
-						type: 'link-card',
-						title: hasRich ? parts[0] : linkMatch[1],
-						url: linkMatch[2],
-						cover: hasRich ? parts[1].trim() : undefined,
-						desc: hasRich ? parts[2]?.trim() || undefined : undefined,
-					});
+				const secondIsUrl = parts.length >= 2 && /^https?:\/\//i.test(parts[1].trim());
+				currentMsg.body.push({
+					type: 'link-card',
+					title: parts[0],
+					url: linkMatch[2],
+					cover: secondIsUrl ? parts[1].trim() : undefined,
+					desc: secondIsUrl ? parts[2]?.trim() || undefined : (parts.length >= 2 ? parts[1] : undefined),
+				});
 				continue;
 			}
 
