@@ -150,22 +150,49 @@ function openPdfOverlay(uri: string) {
 function openForwardOverlay(container: HTMLElement, templateId: string) {
 	const template = container.querySelector<HTMLElement>(`#${templateId}`);
 	if (!template) return;
-	const clone = template.cloneNode(true) as HTMLElement;
+	const clone = (template.cloneNode(true) as HTMLElement);
 	clone.classList.remove('forward-detail-template');
 
-	const overlay = activeDocument.createElement('div');
-	overlay.className = 'chat-forward-overlay';
-	overlay.addEventListener('click', (ev) => { if (ev.target === overlay) overlay.remove(); });
+	let overlay = activeDocument.querySelector<HTMLElement>('.chat-forward-overlay');
+	let modal: HTMLElement;
+	let stack: string[];
 
-	const modal = activeDocument.createElement('div');
-	modal.className = 'chat-forward-modal';
+	if (overlay) {
+		// Already open — push current state onto stack
+		modal = overlay.querySelector<HTMLElement>('.chat-forward-modal')!;
+		stack = (modal as any).__fwStack || [];
+		stack.push(modal.innerHTML);
+	} else {
+		overlay = activeDocument.createElement('div');
+		overlay.className = 'chat-forward-overlay';
+		overlay.addEventListener('click', (ev) => { if (ev.target === overlay) popForwardOrClose(); });
+		modal = activeDocument.createElement('div');
+		modal.className = 'chat-forward-modal';
+		overlay.appendChild(modal);
+		activeDocument.body.appendChild(overlay);
+		stack = [];
+	}
+
+	(modal as any).__fwStack = stack;
+	modal.innerHTML = '';
 	modal.appendChild(clone);
-	overlay.appendChild(modal);
-	activeDocument.body.appendChild(overlay);
-
-	// Re-bind event delegation on the modal so media/PDF clicks inside the popup work
 	setupChatBubbleEvents(modal);
 	initLocationMaps(modal);
+}
+
+function popForwardOrClose() {
+	const overlay = activeDocument.querySelector<HTMLElement>('.chat-forward-overlay');
+	if (!overlay) return;
+	const modal = overlay.querySelector<HTMLElement>('.chat-forward-modal')!;
+	const stack = (modal as any).__fwStack || [];
+	if (stack.length > 0) {
+		modal.innerHTML = stack.pop()!;
+		(modal as any).__fwStack = stack;
+		setupChatBubbleEvents(modal);
+		initLocationMaps(modal);
+	} else {
+		overlay.remove();
+	}
 }
 
 // ────────────────────────────────────
@@ -758,30 +785,52 @@ function renderQuoteBar(sender: string, quote: string, avatar?: string): string 
 
 function renderMergeForward(part: MergeForward, metaMap: Map<string, FileMeta>, selfNames?: string[]): string {
 	const uid = 'fw-' + Math.random().toString(36).slice(2, 8);
-
 	let cardHtml = `<div class="chat-forward-card" data-action="expand-forward" data-id="${uid}">`;
 	cardHtml += `<div class="forward-title">${escapeHtml(part.title)}</div>`;
-
 	cardHtml += renderForwardPreview(part);
 	cardHtml += '<div class="forward-expand">聊天记录</div>';
 	cardHtml += '</div>';
+	cardHtml += renderForwardTemplate(part, metaMap, selfNames, uid);
+	return cardHtml;
+}
 
-	// Hidden template — items rendered as mini bubbles
-	cardHtml += `<div id="${uid}" class="forward-detail-template">`;
-	cardHtml += `<div class="forward-detail-title">${escapeHtml(part.title)}</div>`;
+function renderNestedForwardCard(mf: MergeForward, uid: string, selfNames?: string[]): string {
+	let html = `<div class="chat-forward-card nested" data-action="expand-forward" data-id="${uid}">`;
+	html += `<div class="forward-title">${escapeHtml(mf.title)}</div>`;
+	html += renderForwardPreview(mf);
+	html += '<div class="forward-expand">聊天记录</div>';
+	html += '</div>';
+	html += renderForwardTemplate(mf, new Map(), selfNames, uid);
+	return html;
+}
+
+function renderForwardTemplate(
+	part: MergeForward, metaMap: Map<string, FileMeta>,
+	selfNames: string[] | undefined, uid: string
+): string {
+	let html = `<div id="${uid}" class="forward-detail-template">`;
+	html += `<div class="forward-detail-title">${escapeHtml(part.title)}</div>`;
 	for (const item of part.items) {
 		if ('plain' in item) {
-			cardHtml += `<div class="forward-item system"><span class="forward-plain">${escapeHtml(item.plain)}</span></div>`;
+			html += `<div class="forward-item system"><span class="forward-plain">${escapeHtml(item.plain)}</span></div>`;
 			continue;
 		}
-		const { sender, time, content } = item;
-		const isSelf = isSelfMessage(sender, selfNames);
+		const isSelf = isSelfMessage(item.sender, selfNames);
 		const side = isSelf ? 'self' : 'other';
-		cardHtml += `<div class="forward-item ${side}"><span class="forward-sender">${escapeHtml(sender)} <span class="forward-time">${escapeHtml(time)}</span></span>`;
+		html += `<div class="forward-item ${side}"><span class="forward-sender">${escapeHtml(item.sender)} <span class="forward-time">${escapeHtml(item.time)}</span></span>`;
 
+		// Nested merge-forward
+		if (typeof item.content !== 'string') {
+			const nestedUID = 'fw-' + Math.random().toString(36).slice(2, 8);
+			html += renderNestedForwardCard(item.content, nestedUID, selfNames);
+			html += '</div>';
+			continue;
+		}
+
+		const content = item.content as string;
 		const sr = classifyAndRender(content, metaMap);
 
-		// ── Quote reply (same format as main chat) ──
+		// ── Quote reply ──
 		const QUOTE_RE = /^>\s*\[(.+?)\]\s+(.+)/;
 		const quoteMatch = content.match(QUOTE_RE);
 		if (quoteMatch) {
@@ -789,42 +838,41 @@ function renderMergeForward(part: MergeForward, metaMap: Map<string, FileMeta>, 
 			const qText = quoteMatch[2];
 			const reply = content.slice(quoteMatch[0].length).trim();
 			if (reply) {
-				cardHtml += `<div class="forward-bubble">${renderPlainText(reply)}</div>`;
+				html += `<div class="forward-bubble">${renderPlainText(reply)}</div>`;
 			}
-			cardHtml += renderQuoteBar(qSender, qText);
-		// ── Audio: voice bubble (check before card formats) ──
+			html += renderQuoteBar(qSender, qText);
+		// ── Audio ──
 		} else if (isAudioMedia(content)) {
-			cardHtml += renderAudioBubble(content, side);
-		// ── Card formats: location, contact, link ──
+			html += renderAudioBubble(content, side);
+		// ── Card / media / file / text ──
 		} else {
 			const locObj = parseLocationString(content);
 			if (locObj) {
-				cardHtml += renderLocationCard(locObj);
+				html += renderLocationCard(locObj);
 			} else {
 				const cardObj = parseCardString(content);
 				if (cardObj) {
-					cardHtml += renderCard(cardObj);
+					html += renderCard(cardObj);
 				} else {
 					const linkObj = parseLinkString(content);
 					if (linkObj) {
-						cardHtml += renderLinkCard(linkObj, isSelf);
+						html += renderLinkCard(linkObj, isSelf);
 					} else if (sr.type === 'file') {
 						const raw = content.match(/!\[\[(.+?)\]\]/)?.[1] || '';
 						const { displayName, uri, ext } = resolveFileLink(raw);
-						cardHtml += `<div class="forward-media">${renderFileCardMini(ext, displayName, uri)}</div>`;
+						html += `<div class="forward-media">${renderFileCardMini(ext, displayName, uri)}</div>`;
 					} else if (sr.type === 'media') {
-						cardHtml += `<div class="forward-media">${sr.html}</div>`;
+						html += `<div class="forward-media">${sr.html}</div>`;
 					} else {
-						cardHtml += `<div class="forward-bubble">${sr.html}</div>`;
+						html += `<div class="forward-bubble">${sr.html}</div>`;
 					}
 				}
 			}
 		}
-		cardHtml += '</div>';
+		html += '</div>';
 	}
-	cardHtml += '</div>';
-
-	return cardHtml;
+	html += '</div>';
+	return html;
 }
 
 // ────────────────────────────────────
@@ -850,7 +898,8 @@ function renderForwardPreview(part: MergeForward): string {
 		+ '</div>';
 }
 
-function summarizeForwardContent(content: string): string {
+function summarizeForwardContent(content: string | MergeForward): string {
+	if (typeof content !== 'string') return '[聊天记录]';
 	const text = content.trim().replace(/\s+/g, ' ');
 	if (!text) return '';
 

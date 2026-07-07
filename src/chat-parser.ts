@@ -40,7 +40,7 @@ export interface QuoteReply {
 export interface ForwardItem {
 	sender: string;
 	time: string;
-	content: string;
+	content: string | MergeForward;
 }
 
 export interface ForwardPlainItem {
@@ -94,6 +94,55 @@ export const QUOTE_CARD_RE = /^\[名片\](.+)/;  // quote format: [名片]昵称
 const INDENT_CONTENT_RE = /^\s{2,}(.+)/;
 /** Merge forward sender line: 名字 YYYY-M-D [上午/下午] H:MM[:SS] */
 const FORWARD_SENDER_RE = /^(.+?)\s+(\d{4}-\d{1,2}-\d{1,2}\s+(?:上午|下午|凌晨|中午)?\s*\d{1,2}:\d{2}(?::\d{2})?)/;
+
+interface CardLine { indent: number; text: string; }
+
+/** Recursively parse forward items, detecting nested merge-forwards by indent depth */
+function parseForwardItems(lines: CardLine[], baseIndent: number): (ForwardItem | ForwardPlainItem)[] {
+	const items: (ForwardItem | ForwardPlainItem)[] = [];
+	for (let k = 0; k < lines.length; k++) {
+		const { indent, text } = lines[k];
+		const sm = text.match(FORWARD_SENDER_RE);
+		if (sm) {
+			// Check if sender's content is a nested merge-forward
+			if (k + 1 < lines.length) {
+				const next = lines[k + 1];
+				const nm = next.text.match(MERGE_FORWARD_RE);
+				if (nm && next.indent >= indent) {
+					k++; // consume [合并转发|...] line
+					const nestedLines: CardLine[] = [];
+					const nestedBase = next.indent;
+					while (k + 1 < lines.length && lines[k + 1].indent > nestedBase) {
+						k++;
+						nestedLines.push(lines[k]);
+					}
+					items.push({
+						sender: sm[1], time: sm[2],
+						content: {
+							type: 'merge-forward',
+							title: nm[1],
+							items: parseForwardItems(nestedLines, nestedBase)
+						}
+					});
+					continue;
+				}
+			}
+			// Normal text content
+			let content = '';
+			while (k + 1 < lines.length) {
+				const next = lines[k + 1];
+				if (next.indent <= indent && (FORWARD_SENDER_RE.test(next.text) || MERGE_FORWARD_RE.test(next.text))) break;
+				k++;
+				if (content) content += '\n';
+				content += next.text;
+			}
+			items.push({ sender: sm[1], time: sm[2], content });
+		} else {
+			items.push({ plain: text });
+		}
+	}
+	return items;
+}
 
 export function parseChatLog(markdown: string): ParseResult {
 	const lines = markdown.split(/\r?\n/);
@@ -199,7 +248,7 @@ export function parseChatLog(markdown: string): ParseResult {
 			const forwardMatch = line.match(MERGE_FORWARD_RE);
 			if (forwardMatch) {
 				const title = forwardMatch[1];
-				const cardLines: string[] = [];
+				const cardLines: CardLine[] = [];
 				let j = i + 1;
 				while (j < lines.length) {
 					const next = lines[j];
@@ -207,28 +256,13 @@ export function parseChatLog(markdown: string): ParseResult {
 						if (next.trim() === '') { j++; continue; }
 						break;
 					}
-					const indentMatch = next.match(INDENT_CONTENT_RE);
-					if (indentMatch) {
-						cardLines.push(indentMatch[1]);
+					const cm = next.match(/^(\s*)(.+)/);
+					if (cm && cm[1].length >= 2) {
+						cardLines.push({ indent: cm[1].length, text: cm[2] });
 					}
 					j++;
 				}
-				// Merge sender lines with following content (greedy: consume all non-sender lines)
-				const mergedItems: (ForwardItem | ForwardPlainItem)[] = [];
-				for (let k = 0; k < cardLines.length; k++) {
-					const sm = cardLines[k].match(FORWARD_SENDER_RE);
-					if (sm) {
-						let content = '';
-						while (k + 1 < cardLines.length && !FORWARD_SENDER_RE.test(cardLines[k + 1])) {
-							k++;
-							if (content) content += '\n';
-							content += cardLines[k];
-						}
-						mergedItems.push({ sender: sm[1], time: sm[2], content });
-					} else {
-						mergedItems.push({ plain: cardLines[k] });
-					}
-				}
+				const mergedItems = parseForwardItems(cardLines, 2);
 				currentMsg.body.push({ type: 'merge-forward', title, items: mergedItems });
 				i = j - 1;
 				continue;

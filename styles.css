@@ -713,19 +713,22 @@
 /* Scale cards inside merge-forward proportionally (12/14 ≈ 0.85) + side alignment + reset text */
 .forward-item .chat-location-card,
 .forward-item .chat-card,
-.forward-item .chat-link-card {
+.forward-item .chat-link-card,
+.forward-item .chat-forward-card.nested {
   transform: scale(0.85);
   text-align: left;
 }
 .forward-item.other .chat-location-card,
 .forward-item.other .chat-card,
-.forward-item.other .chat-link-card {
+.forward-item.other .chat-link-card,
+.forward-item.other .chat-forward-card.nested {
   transform-origin: top left;
   margin-right: auto;
 }
 .forward-item.self .chat-location-card,
 .forward-item.self .chat-card,
-.forward-item.self .chat-link-card {
+.forward-item.self .chat-link-card,
+.forward-item.self .chat-forward-card.nested {
   transform-origin: top right;
   margin-left: auto;
 }
