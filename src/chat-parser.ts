@@ -84,7 +84,7 @@ export interface ParseResult {
 }
 
 const HEADER_RE = /^\[(.*?)\]\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/;
-const QUOTE_REPLY_RE = /^>\s*\[(.+?)\]\s+(.+)/;
+export const QUOTE_REPLY_RE = /^>\s*\[(.+?)\]\s+(.+)/;
 const MERGE_FORWARD_RE = /^\[合并转发\|(.+?)\]/;
 const LINK_CARD_RE = /^\[(?:链接|小程序)\|([^\]]+)\]\((.+)\)$/;
 export { LINK_CARD_RE };

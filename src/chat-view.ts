@@ -10,7 +10,7 @@
  * 不在 HTML 中嵌入 onclick — 安全且可维护。
  */
 
-import { parseChatLog, MergeForward, LinkCard, LocationCard, Card, parseLinkString, parseLocationString, parseCardString, formatLocationAddress, buildGeoUrl, CARD_RE, QUOTE_CARD_RE } from './chat-parser';
+import { parseChatLog, MergeForward, LinkCard, LocationCard, Card, parseLinkString, parseLocationString, parseCardString, formatLocationAddress, buildGeoUrl, CARD_RE, QUOTE_CARD_RE, QUOTE_REPLY_RE } from './chat-parser';
 import maplibregl from 'maplibre-gl';
 import { AUDIO_EXTS, VIDEO_EXTS, IMAGE_EXTS, FILE_EXTS, FILE_EXT_RE } from './constants';
 
@@ -325,7 +325,7 @@ function renderAudioBubble(text: string, side: string): string {
 	const match = text.match(/!\[\[(.+?)\]\]/);
 	const resolved = match?.[1] || '';
 	const uri = resolved.startsWith('RESOLVED:') ? resolved.slice(9) : resolved;
-	const uid = 'au-' + Math.random().toString(36).slice(2, 8);
+	const uid = 'au-' + shortId();
 	return `<div class="chat-audio-msg ${side}" data-action="toggle-audio" data-audio-id="${uid}" ><span class="chat-audio-icon">🔊</span><span class="chat-audio-text">语音消息</span><span class="chat-audio-dur"></span><audio id="${uid}" src="${uri}" hidden preload="metadata"></audio></div>`;
 }
 
@@ -556,7 +556,7 @@ export function destroyLocationMaps(container: HTMLElement) {
 }
 
 function isSelfMessage(name: string, selfNames?: string[]): boolean {
-	const names = selfNames?.length ? selfNames : ['自己', '我', 'me'];
+	const names = selfNames?.length ? selfNames : ['我', 'me'];
 	return names.some(n => name.toLowerCase() === n.toLowerCase());
 }
 
@@ -614,7 +614,7 @@ function renderQuoteBar(sender: string, quote: string, avatar?: string): string 
 		} else if (isVideo) {
 			preview = `<video src="${escapeAttr(resolved)}" class="chat-quote-video-thumb" data-action="preview-media" data-type="video" data-uri="${escapeAttr(resolved)}"  muted preload="metadata"></video>`;
 		} else if (isAudio) {
-			const uid = 'au-' + Math.random().toString(36).slice(2, 8);
+			const uid = 'au-' + shortId();
 			const label = resolved.startsWith('data:') ? '语音消息' : (safeDecodeURI(resolved.split('?')[0].split('/').pop() || 'audio'));
 			preview = `<span class="chat-quote-audio-bar" data-action="toggle-audio" data-audio-id="${uid}" ><span class="chat-quote-audio-icon">🔊</span>${escapeHtml(label)}<audio id="${uid}" src="${escapeAttr(resolved)}" hidden preload="metadata"></audio></span>`;
 		} else if (isFile) {
@@ -683,7 +683,7 @@ function renderQuoteBar(sender: string, quote: string, avatar?: string): string 
 		const ext = filename.split('.').pop()?.toLowerCase() || '';
 		if (VIDEO_EXTS.includes(ext)) return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}</span><span class="chat-quote-video-icon">▶</span></div>`;
 		if (AUDIO_EXTS.includes(ext)) {
-			const uid = 'au-' + Math.random().toString(36).slice(2, 8);
+			const uid = 'au-' + shortId();
 			return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}</span><span class="chat-quote-audio-bar" data-action="toggle-audio" data-audio-id="${uid}" ><span class="chat-quote-audio-icon">🔊</span>语音消息<audio id="${uid}" src="${escapeAttr(safeEncodeURI(filename))}" hidden preload="metadata"></audio></span></div>`;
 		}
 		if (IMAGE_EXTS.includes(ext)) return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}</span>[图片]</div>`;
@@ -697,7 +697,7 @@ function renderQuoteBar(sender: string, quote: string, avatar?: string): string 
 }
 
 function renderMergeForward(part: MergeForward, metaMap: Map<string, FileMeta>, selfNames?: string[], nested = false): string {
-	const uid = 'fw-' + Math.random().toString(36).slice(2, 8);
+	const uid = 'fw-' + shortId();
 	const cls = nested ? 'chat-forward-card nested' : 'chat-forward-card';
 	let cardHtml = `<div class="${cls}" data-action="expand-forward" data-id="${uid}">`;
 	cardHtml += `<div class="forward-title">${escapeHtml(part.title)}</div>`;
@@ -734,8 +734,7 @@ function renderForwardTemplate(
 		const sr = classifyAndRender(content, metaMap);
 
 		// ── Quote reply ──
-		const QUOTE_RE = /^>\s*\[(.+?)\]\s+(.+)/;
-		const quoteMatch = content.match(QUOTE_RE);
+		const quoteMatch = content.match(QUOTE_REPLY_RE);
 		if (quoteMatch) {
 			const qSender = quoteMatch[1];
 			const qText = quoteMatch[2];
@@ -779,6 +778,8 @@ function renderForwardTemplate(
 // ────────────────────────────────────
 // 工具函数
 // ────────────────────────────────────
+
+const shortId = () => Math.random().toString(36).slice(2, 8);
 
 function renderForwardPreview(part: MergeForward): string {
 	const rows = part.items

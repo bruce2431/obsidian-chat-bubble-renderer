@@ -1,35 +1,59 @@
 # Chat Bubble Renderer
 
-> Render Markdown chat logs as WeChat-style bubble dialogs directly in Obsidian.
-> 将聊天记录渲染为微信风格气泡对话框。
+> Instantly transform Markdown chat logs into WeChat-style bubble dialogs inside Obsidian.
 
 [![Release](https://img.shields.io/github/v/release/bruce2431/obsidian-chat-bubble-renderer?include_prereleases&style=flat)](https://github.com/bruce2431/obsidian-chat-bubble-renderer/releases)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 ## Features
 
-- **Auto-render** — Switch to reading view on tagged files, bubbles appear automatically. `Ctrl+P` manual trigger also available.
-- **Parse** — Standard message headers `[Sender] YYYY-MM-DD HH:MM:SS`, quoted replies, merge-forward cards, system messages (nudge/recall), and Obsidian internal links `![[file.ext]]`
-- **Render** — WeChat-style bubbles: others left (gray), yourself right (green); quoted replies with gray bar and media icons; merge-forward cards with click-to-expand bubble view (sender+timestamp, self/other alignment, inline media); images/audio/video inline with click-to-preview
-- **File attachments** — PDF/DOC/XLS etc. rendered as file cards (name + type icon); PDFs open preview modal on click; file cards in merge-forward with send-time alignment
-- **Media preview** — Click any image or video to view full-size in dark overlay modal (close by clicking background)
-- **Performance** — Chunked base64 encoding, shared vault-name lookup, event-driven auto-render (no polling)
-- **Theme-aware** — Follows Obsidian's dark/light theme automatically
+### Automatic Rendering
 
-## Latest Release
+Switch to reading view on any file tagged with `#聊天记录` — bubbles appear automatically. No manual trigger needed. Press `Esc` to dismiss. A `Ctrl+P` command ("Render as Chat Bubbles") is also available for manual control.
 
-### 1.3.1
+### Message Types
 
-- Reduced duplicate rendering logic for media/PDF overlays, platform badges, and merge-forward media summaries.
-- Hardened file-name decoding so unusual attachment names do not interrupt rendering.
-- Aligned package, manifest, and Obsidian version metadata for release publishing.
-- Updated the build config to resolve entry/output paths from the project root reliably.
+| Type | Description |
+|------|-------------|
+| **Text** | Standard messages in WeChat-style bubbles: others on the left (gray `#f2f3f5`), yourself on the right (green `#95ec69`). Bubbles auto-size to content width. |
+| **Quote Reply** | `>[Sender] quoted content` — renders a gray reference bar above the reply bubble. Supports quoted images (thumbnail), videos (first-frame preview), audio (inline toggle), PDFs (red badge), and location/card/link previews. |
+| **Merge-Forward** | `[合并转发\|title]` — a compact card showing title + 4-line preview + "Chat Records" footer. Click to open a navigable overlay with sender/timestamp bubbles, inline media, and support for **unlimited nesting** (click nested cards to dive deeper, click background to pop back). |
+| **System Messages** | Nudge, recall, group creation/rename, friend verification — rendered as centered gray tips without bubbles. |
 
-## Usage
+### Rich Cards
 
-Tag your Markdown file with `tags: [聊天记录]`, then switch to **reading view** (`Ctrl+E`). Bubbles render automatically. `Esc` to exit.
+| Card | Format | Behavior |
+|------|--------|----------|
+| **Location** | `[位置\|address\|city\|lng,lat]` | MapLibre vector map preview with red pin marker. Click to open in OpenStreetMap. |
+| **Contact** | `[名片\|nickname\|wechat_id\|sex\|region]` | Avatar (from `![[image]]` on next line) + nickname + tags. Personal 名片 shown as 👤, official accounts as 📢. |
+| **Link** | `[链接\|title\|cover_url\|description](url)` | Rich preview card with platform badge (Bilibili, NetEase Music, Xiaohongshu, WeChat, QQ, LOFTER, Tencent Meeting — auto-detected by domain) + cover thumbnail on the right. Simple cards fall back to a 🔗 icon. Supports `[小程序\|...]` variant. |
+| **File** | `![[file.pdf]]` | Card with filename + extension badge (colored red). PDFs open an iframe preview on click. Supports PDF/DOC/DOCX/XLS/XLSX/PPT/PPTX/TXT/ZIP/RAR/7Z. |
 
-### Chat Log Format
+### Media Support
+
+- **Images** — Inline rendering with `loading="lazy"`. Click to preview full-size in a dark overlay modal.
+- **Videos** — Static preview card (200×280 + first-frame thumbnail + ▶ overlay). Click to play full-screen.
+- **Audio** — WeChat-style voice bubble (🔊 icon + dynamic duration). Click to play/pause inline.
+- All media resolved via Obsidian's vault resource paths — audio files are base64-encoded for playback.
+
+### Performance
+
+- **Virtual scrolling** — Only ~150 DOM nodes visible at any time, even with tens of thousands of messages.
+- **Lazy media resolution** — Media file URIs are resolved on-demand as messages scroll into view.
+- **Chunked base64 encoding** — Large audio files encoded in 4096-byte chunks, ~40× faster.
+- **Event-driven auto-render** — No polling; renders on tab switch and layout change via workspace events.
+- **Shared name map** — Vault file lookups cached once and kept in sync via create/delete/rename events.
+
+### Theme & UX
+
+- Follows Obsidian's light/dark theme automatically via CSS custom properties.
+- All interactive elements use event delegation (no inline `onclick`) — clean, secure, maintainable.
+- Overlay modals close on background click or `Esc` key.
+- `safeHrefAttr` protocol filtering on all user-generated links (`http`/`https`/`mailto`/`obsidian` only).
+
+## Chat Log Format
+
+### Basic Message
 
 ```markdown
 ---
@@ -37,35 +61,102 @@ tags:
   - 聊天记录
 ---
 
-[自己] 2026-06-15 08:00:00
-我喜欢你
-
-[对方] 2026-06-18 08:01:52
-> [自己] 我喜欢你
-我不喜欢你
-
-[自己] 2026-06-18 11:16:02
-![[哭哭_emoj.jpg]]
-
-[对方] 2026-06-19 17:34:39
-![[文件.pdf]]
+[Sender Name] 2026-06-30 10:13:49
+Message content here.
+[Reciver Name] 2026-06-30 10:13:49
+Message content here.
 ```
 
-![渲染效果](exp.png)
+![Basic rendering](e1.png)
 
-Supported formats: quote replies (`>`), merge-forward (`[合并转发|title]`), system messages (nudge/recall), media embeds (`![[file.ext]]`), file attachments (PDF/DOC/XLS).
+### Quote Reply
+
+```markdown
+[甲] 2026-06-30 10:12:21
+> [甲] Quoted message text
+My reply content.
+```
+
+![Quote reply rendering](e3.png)
+
+Quotes also support media and card references:
+```markdown
+> [甲] ![[image.jpg]]         — thumbnail preview
+> [甲] [位置|Shanghai|上海|121.47,31.23]  — map thumbnail
+> [甲] [名片|张三|wxid_xxx|男|北京]        — contact card preview
+> [甲] [链接|Title|cover.jpg](https://...)  — link card preview
+```
+
+### Rich Cards
+
+```markdown
+[甲] 2026-06-30 10:14:07
+[位置|详细地址|市|经度,纬度]
+
+[甲] 2026-06-30 10:14:26
+[名片|Name|微信号:wxid|Gender|Location]
+![[avatar.jpg]]
+
+[甲] 2026-06-30 10:14:55
+[链接|标题|https://example.com/cover.jpg|其它信息](https://example.com/article)
+
+[甲] 2026-06-30 10:16:23
+[合并转发|甲 和 丙的聊天记录]
+  甲 2026-6-30 10:12
+  你好
+  丙 2026-6-30 10:12
+  你好
+```
+
+![Rich cards rendering](e2.png)
+
+![Merge-forward modal](e4.png)
+
+### Media Embeds
+
+```markdown
+[甲] 2026-06-30 10:13:49
+![[photo.jpg]]
+
+[甲] 2026-06-30 10:14:00
+![[voice.amr]]
+
+[甲] 2026-06-30 10:14:30
+![[video.mp4]]
+
+[甲] 2026-06-30 10:15:00
+![[document.pdf]]
+```
 
 ## Installation
 
-**Community Plugin Store**: Search "Chat Bubble Renderer" in Obsidian → Community plugins.
+### Community Plugin Store
 
-**Manual**: `npm install && npm run build` → copy `main.js`, `styles.css`, `manifest.json` to `.obsidian/plugins/chat-bubble-renderer/`.
+Search **"Chat Bubble Renderer"** in Obsidian → Settings → Community plugins → Browse → Install.
+
+### Manual
+
+```bash
+git clone https://github.com/bruce2431/obsidian-chat-bubble-renderer.git
+cd obsidian-chat-bubble-renderer
+npm install
+npm run build
+```
+
+Then copy `main.js`, `styles.css`, and `manifest.json` into your vault's `.obsidian/plugins/chat-bubble-renderer/` directory.
 
 ## Settings
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| Self Identifiers | Names that identify "you" in chat logs | 我, me, 自己 |
+| **Self Identifiers** | Comma-separated names that identify yourself (your messages render on the right, in green). Supports Chinese commas. | `我`, `me` |
+
+![Settings panel](exp.png)
+
+## Requirements
+
+- Obsidian ≥ **1.5.0**
+- Desktop or mobile (plugin is not desktop-only)
 
 ## License
 
