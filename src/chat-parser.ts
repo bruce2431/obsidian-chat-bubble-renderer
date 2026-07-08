@@ -174,72 +174,23 @@ export function parseChatLog(markdown: string): ParseResult {
 			const trimmed = line.trim();
 
 			// ── Link card ──
-			const linkMatch = trimmed.match(LINK_CARD_RE);
-			if (linkMatch) {
-				const parts = linkMatch[1].split('|');
-				const secondIsUrl = parts.length >= 2 && /^https?:\/\//i.test(parts[1].trim());
-				currentMsg.body.push({
-					type: 'link-card',
-					title: parts[0],
-					url: linkMatch[2],
-					cover: secondIsUrl ? parts[1].trim() : undefined,
-					desc: secondIsUrl ? parts[2]?.trim() || undefined : (parts.length >= 2 ? parts[1] : undefined),
-				});
-				continue;
-			}
+			const linkCard = parseLinkString(trimmed);
+			if (linkCard) { currentMsg.body.push(linkCard); continue; }
 
 			// ── Location card ──
-			const locMatch = trimmed.match(LOCATION_RE);
-			if (locMatch) {
-				const label = locMatch[1];
-				const city = locMatch[2] || undefined;
-				let lat: number | undefined;
-				let lng: number | undefined;
-				// Pipe-separated: wetrace message.go [label|city|lat|lng]
-				// Comma-separated: wetrace2md [label|city|lng,lat]
-				const c3 = locMatch[3];
-				const c4 = locMatch[4];
-				if (c3 && c4) {
-					lat = parseFloat(c3);
-					lng = parseFloat(c4);
-				} else if (c3 && c3.includes(',')) {
-					const [a, b] = c3.split(',');
-					lng = parseFloat(a);
-					lat = parseFloat(b);
-				}
-				currentMsg.body.push({ type: 'location', label, city, lat, lng });
-				continue;
-			}
+			const locCard = parseLocationString(trimmed);
+			if (locCard) { currentMsg.body.push(locCard); continue; }
 
 			// ── Card (contact card) ──
-			const cardMatch = trimmed.match(CARD_RE);
-			if (cardMatch) {
-				const nickname = cardMatch[1];
-				const f2 = cardMatch[2] || '';
-				const f3 = cardMatch[3] || '';
-				const f4 = cardMatch[4] || '';
-				// Distinguish personal card vs official account
-				// Personal: [名片|昵称|微信号:xxx|性别|地区]  — 4 fields after nickname
-				// Official: [名片|昵称|地区]  — 2 fields after nickname
-				const isPersonal = f2.includes('微信号') || (!!f2 && !!f3);
-				// Peek next line for avatar image
-				let avatar: string | undefined;
-				if (i + 1 < lines.length) {
+			const cardObj = parseCardString(trimmed);
+			if (cardObj) {
+				// Peek next line for avatar (if not already on the same line)
+				if (!cardObj.avatar && i + 1 < lines.length) {
 					const next = lines[i + 1].trim();
 					const imgMatch = next.match(/^!\[\[(.+?)\]\]$/);
-					if (imgMatch) {
-						avatar = imgMatch[1];
-						i++; // consume avatar line
-					}
+					if (imgMatch) { cardObj.avatar = imgMatch[1]; i++; }
 				}
-				currentMsg.body.push({
-					type: 'card',
-					nickname,
-					alias: isPersonal ? f2 || undefined : undefined,
-					sex: isPersonal ? f3 || undefined : undefined,
-					region: isPersonal ? f4 || f2 || undefined : f2 || undefined,
-					avatar,
-				});
+				currentMsg.body.push(cardObj);
 				continue;
 			}
 
@@ -306,4 +257,76 @@ export function parseChatLog(markdown: string): ParseResult {
 
 	const preambleText = preamble.join(NL).trim();
 	return { preamble: preambleText, messages };
+}
+
+/**
+ * Parse a [链接|小程序|title|cover?|desc?](url) line into a LinkCard.
+ * Exported for reuse by chat-view.ts renderQuoteBar and renderMergeForward.
+ */
+export function parseLinkString(content: string): LinkCard | null {
+	const m = content.trim().match(LINK_CARD_RE);
+	if (!m) return null;
+	const parts = m[1].split('|');
+	const secondIsUrl = parts.length >= 2 && /^https?:\/\//i.test(parts[1].trim());
+	return {
+		type: 'link-card',
+		title: parts[0],
+		url: m[2],
+		cover: secondIsUrl ? parts[1].trim() : undefined,
+		desc: secondIsUrl ? parts[2]?.trim() || undefined : (parts.length >= 2 ? parts[1] : undefined),
+	};
+}
+
+/**
+ * Parse a [位置|label|city|lat|lng] line into a LocationCard.
+ * Exported for reuse by chat-view.ts renderQuoteBar and renderMergeForward.
+ */
+export function parseLocationString(content: string): LocationCard | null {
+	const m = content.trim().match(LOCATION_RE);
+	if (!m) return null;
+	const label = m[1];
+	const city = m[2] || undefined;
+	let lat: number | undefined;
+	let lng: number | undefined;
+	const c3 = m[3];
+	const c4 = m[4];
+	if (c3 && c4) { lat = parseFloat(c3); lng = parseFloat(c4); }
+	else if (c3 && c3.includes(',')) { const [a, b] = c3.split(','); lng = parseFloat(a); lat = parseFloat(b); }
+	return { type: 'location', label, city, lat, lng };
+}
+
+/**
+ * Parse a [名片|nickname|alias|sex|region] line into a Card.
+ * Checks for trailing ![[avatar]] on the same line; caller should also peek next line.
+ */
+export function parseCardString(content: string): Card | null {
+	const trimmed = content.trim();
+	const m = trimmed.match(CARD_RE);
+	if (!m) return null;
+	const f2 = m[2] || '';
+	const f3 = m[3] || '';
+	const f4 = m[4] || '';
+	const isPersonal = f2.includes('微信号') || (!!f2 && !!f3);
+	let avatar: string | undefined;
+	const after = trimmed.slice(m[0].length);
+	const imgMatch = after.match(/^!\[\[(.+?)\]\]/);
+	if (imgMatch) avatar = imgMatch[1];
+	return {
+		type: 'card',
+		nickname: m[1],
+		alias: isPersonal ? f2 || undefined : undefined,
+		sex: isPersonal ? f3 || undefined : undefined,
+		region: isPersonal ? (f4 || f2 || undefined) : (f2 || undefined),
+		avatar,
+	};
+}
+
+/** Build city+label address string, avoiding duplicate city in label */
+export function formatLocationAddress(label: string, city?: string): string {
+	return (city && !label.includes(city)) ? `${city} ${label}` : label;
+}
+
+/** Build OSM URL for a lat/lng pair */
+export function buildGeoUrl(lat: number, lng: number): string {
+	return `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}&zoom=15`;
 }

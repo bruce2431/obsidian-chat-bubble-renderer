@@ -6,6 +6,7 @@ import {
 } from 'obsidian';
 import { DEFAULT_SETTINGS, ChatBubbleSettings, ChatBubbleSettingTab } from './settings';
 import { renderChatLog, FileMeta, setupChatBubbleEvents, initLocationMaps, destroyLocationMaps } from './chat-view';
+import { AUDIO_EXTS, FILE_EXT_RE } from './constants';
 
 export default class ChatBubblePlugin extends Plugin {
 	settings!: ChatBubbleSettings;
@@ -191,8 +192,6 @@ export default class ChatBubblePlugin extends Plugin {
 		 * (audio→base64 data URI, images/video/docs→resource URI).
 		 */
 		async processContent(content: string, nameMap: Map<string, TFile>): Promise<{ resolvedContent: string; fileMetas: FileMeta[] }> {
-				const audioExts = ['mp3', 'm4a', 'wav', 'ogg', 'aac', 'amr', 'silk'];
-				const fileExts = /\.(pdf|docx?|xlsx?|pptx?|txt|zip|rar|7z)\b/i;
 				const re = /!\[\[(.+?)\]\]/g;
 
 				const metas: FileMeta[] = [];
@@ -209,7 +208,7 @@ export default class ChatBubblePlugin extends Plugin {
 					const index = m.index;
 
 					// Collect file attachment metadata (PDF, DOC, etc.)
-					if (fileExts.test(linktext)) {
+					if (FILE_EXT_RE.test(linktext)) {
 						const size = this.formatFileSize(file.stat.size);
 						const url = this.app.vault.getResourcePath(file);
 						metas.push({ name: linktext, size, url });
@@ -217,7 +216,7 @@ export default class ChatBubblePlugin extends Plugin {
 
 					const ext = file.extension.toLowerCase();
 
-					const pending: Promise<string> = audioExts.includes(ext)
+					const pending: Promise<string> = AUDIO_EXTS.includes(ext)
 						? (async () => {
 							try {
 								const buf = await this.app.vault.readBinary(file);

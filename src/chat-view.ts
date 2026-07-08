@@ -10,8 +10,9 @@
  * 不在 HTML 中嵌入 onclick — 安全且可维护。
  */
 
-import { parseChatLog, MergeForward, LinkCard, LocationCard, Card, LOCATION_RE, CARD_RE, QUOTE_CARD_RE, LINK_CARD_RE } from './chat-parser';
+import { parseChatLog, MergeForward, LinkCard, LocationCard, Card, parseLinkString, parseLocationString, parseCardString, formatLocationAddress, buildGeoUrl, LOCATION_RE, CARD_RE, QUOTE_CARD_RE, LINK_CARD_RE } from './chat-parser';
 import maplibregl from 'maplibre-gl';
+import { AUDIO_EXTS, VIDEO_EXTS, IMAGE_EXTS, FILE_EXTS, FILE_EXT_RE } from './constants';
 
 const NL = String.fromCharCode(10);
 const locationMaps = new WeakMap<HTMLElement, maplibregl.Map>();
@@ -19,17 +20,10 @@ const locationMaps = new WeakMap<HTMLElement, maplibregl.Map>();
 /** 系统消息正则 — 匹配则渲染为居中浅灰系统提示 */
 const SYSTEM_MSG_RE = /撤回了一条消息|拍了拍|加入了群聊|移出了群聊|修改群名为|被管理员|已成为新群主|开启了朋友验证|已经通过你的朋友验证/;
 
-/** 扩展名常量 — 统一引用，避免各处列表不一致 */
-const AUDIO_EXTS = ['mp3', 'm4a', 'wav', 'ogg', 'aac', 'amr', 'silk'];
-const VIDEO_EXTS = ['mp4', 'webm', 'mov'];
-const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'];
-const FILE_EXTS = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'zip', 'rar', '7z'];
-
 /** 预编译正则 — 避免每条消息重复构造 */
 const AUDIO_EXT_RE = new RegExp(`\\.(${AUDIO_EXTS.join('|')})\\b`, 'i');
 const MEDIA_EXT_RE = new RegExp(`\\.(${[...IMAGE_EXTS, ...VIDEO_EXTS, 'emoj'].join('|')})\\b`, 'i');
-const MEDIA_EXT_NB_RE = new RegExp(`\\.(${[...IMAGE_EXTS, ...VIDEO_EXTS, 'emoj'].join('|')})`, 'i'); // no \\b boundary for RESOLVED: URIs
-const FILE_EXT_RE = new RegExp(`\\.(${FILE_EXTS.join('|')})\\b`, 'i');
+const MEDIA_EXT_NB_RE = new RegExp(`\\.(${[...IMAGE_EXTS, ...VIDEO_EXTS, 'emoj'].join('|')})`, 'i');
 const IMAGE_EXT_RE = new RegExp(`\\.(${IMAGE_EXTS.join('|')})\\b`, 'i');
 const VIDEO_EXT_RE = new RegExp(`\\.(${VIDEO_EXTS.join('|')})\\b`, 'i');
 const WIKILINK_ONLY_RE = /^!\[\[.+?\]\]$/;
@@ -362,60 +356,6 @@ function classifyAndRender(content: string, metaMap: Map<string, FileMeta>): { h
 	return { html: renderPlainText(content), type };
 }
 
-/** Parse [位置|label|city|lat|lng] string into LocationCard */
-function parseLocationString(content: string): LocationCard | null {
-	const m = content.trim().match(LOCATION_RE);
-	if (!m) return null;
-	const label = m[1];
-	const city = m[2] || undefined;
-	let lat: number | undefined;
-	let lng: number | undefined;
-	const c3 = m[3];
-	const c4 = m[4];
-	if (c3 && c4) { lat = parseFloat(c3); lng = parseFloat(c4); }
-	else if (c3 && c3.includes(',')) { const [a, b] = c3.split(','); lng = parseFloat(a); lat = parseFloat(b); }
-	return { type: 'location', label, city, lat, lng };
-}
-
-/** Parse [名片|nickname|alias|sex|region] string into Card */
-function parseCardString(content: string): Card | null {
-	const trimmed = content.trim();
-	const m = trimmed.match(CARD_RE);
-	if (!m) return null;
-	const f2 = m[2] || '';
-	const f3 = m[3] || '';
-	const f4 = m[4] || '';
-	const isPersonal = f2.includes('微信号') || (!!f2 && !!f3);
-	// Extract trailing avatar: [名片|...]![[RESOLVED:...]]
-	let avatar: string | undefined;
-	const after = trimmed.slice(m[0].length);
-	const imgMatch = after.match(/^!\[\[(.+?)\]\]/);
-	if (imgMatch) avatar = imgMatch[1];
-	return {
-		type: 'card',
-		nickname: m[1],
-		alias: isPersonal ? f2 || undefined : undefined,
-		sex: isPersonal ? f3 || undefined : undefined,
-		region: isPersonal ? (f4 || f2 || undefined) : (f2 || undefined),
-		avatar,
-	};
-}
-
-/** Parse [链接|小程序|title|cover?|desc?](url) string into LinkCard */
-function parseLinkString(content: string): LinkCard | null {
-	const m = content.trim().match(LINK_CARD_RE);
-	if (!m) return null;
-	const parts = m[1].split('|');
-	const secondIsUrl = parts.length >= 2 && /^https?:\/\//i.test(parts[1].trim());
-	return {
-		type: 'link-card',
-		title: parts[0],
-		url: m[2],
-		cover: secondIsUrl ? parts[1].trim() : undefined,
-		desc: secondIsUrl ? parts[2]?.trim() || undefined : (parts.length >= 2 ? parts[1] : undefined),
-	};
-}
-
 /** Render a file attachment as a card — PDF preview via event delegation */
 function renderFileCard(part: string, metaMap: Map<string, FileMeta>): string {
 	const match = part.match(/!\[\[(.+?)\]\]/);
@@ -541,12 +481,10 @@ function domainBadge(domain: string): string {
 /** Render a WeChat-style location card */
 let _locMapId = 0;
 function renderLocationCard(loc: LocationCard): string {
-	const addr = (loc.city && !loc.label.includes(loc.city)) ? `${loc.city} ${loc.label}` : loc.label;
+	const addr = formatLocationAddress(loc.label, loc.city);
 	const hasCoords = loc.lat !== undefined && loc.lng !== undefined && !isNaN(loc.lat) && !isNaN(loc.lng);
 	const mid = 'lm' + (_locMapId++);
-	const geoUrl = hasCoords
-		? `https://www.openstreetmap.org/?mlat=${loc.lat}&mlon=${loc.lng}&zoom=15`
-		: '';
+	const geoUrl = hasCoords ? buildGeoUrl(loc.lat!, loc.lng!) : '';
 	const mapArea = hasCoords
 		? `<div class="chat-location-map-wrap" data-action="open-geo" data-geo="${escapeAttr(geoUrl)}">
 			<div id="${mid}" class="chat-location-map" data-lat="${loc.lat}" data-lng="${loc.lng}"></div>
@@ -632,38 +570,28 @@ function renderPlainText(text: string): string {
 
 	result = result.replace(/!\[\[(.+?)(?:\|(\d+))?\]\]/g, (_m, file: string, w: string) => {
 		file = file.trim();
+		let uri: string;
+		let ext: string;
 
 		if (file.startsWith('RESOLVED:')) {
-			const uri = file.slice(9);
-			if (uri.startsWith('data:audio/')) {
-				return `<audio controls preload="auto" src="${escapeAttr(uri)}" class="chat-bare-audio"></audio>`;
-			}
-			if (uri.startsWith('data:video/')) {
-				return `<video controls preload="auto" src="${escapeAttr(uri)}" class="chat-bare-video" data-action="preview-media" data-type="video" data-uri="${escapeAttr(uri)}"></video>`;
-			}
-			// Resource URIs (app://...) — check extension for audio/video
-			if (!uri.startsWith('data:')) {
-				const ext = uri.split('?')[0].split('.').pop()?.toLowerCase() || '';
-				if (AUDIO_EXTS.includes(ext)) {
-					return `<audio controls preload="auto" src="${escapeAttr(uri)}" class="chat-bare-audio"></audio>`;
-				}
-				if (VIDEO_EXTS.includes(ext)) {
-					return `<video controls preload="auto" src="${escapeAttr(uri)}" class="chat-bare-video" data-action="preview-media" data-type="video" data-uri="${escapeAttr(uri)}"></video>`;
-				}
-			}
-			const width = w ? ` width="${w}"` : '';
-			return `<img src="${escapeAttr(uri)}" class="chat-bare-img"${width} loading="lazy" data-action="preview-media" data-type="img" data-uri="${escapeAttr(uri)}">`;
+			uri = file.slice(9);
+			if (uri.startsWith('data:audio/')) { ext = 'audio'; }
+			else if (uri.startsWith('data:video/')) { ext = 'video'; }
+			else if (!uri.startsWith('data:')) { ext = uri.split('?')[0].split('.').pop()?.toLowerCase() || ''; }
+			else { ext = ''; }
+		} else {
+			uri = safeEncodeURI(file);
+			ext = file.split('.').pop()?.toLowerCase() || '';
 		}
 
-		const ext = file.split('.').pop()?.toLowerCase() || '';
-		if (AUDIO_EXTS.includes(ext)) {
-			return `<audio controls preload="auto" src="${escapeAttr(safeEncodeURI(file))}" class="chat-bare-audio"></audio>`;
+		if (ext === 'audio' || AUDIO_EXTS.includes(ext)) {
+			return renderAudioTag(uri);
 		}
-		if (VIDEO_EXTS.includes(ext)) {
-			return `<video controls preload="auto" src="${escapeAttr(safeEncodeURI(file))}" class="chat-bare-video" data-action="preview-media" data-type="video" data-uri="${escapeAttr(safeEncodeURI(file))}"></video>`;
+		if (ext === 'video' || VIDEO_EXTS.includes(ext)) {
+			return renderVideoTag(uri);
 		}
 		const width = w ? ` width="${w}"` : '';
-		return `<img src="${escapeAttr(safeEncodeURI(file))}" class="chat-bare-img"${width} loading="lazy" data-action="preview-media" data-type="img" data-uri="${escapeAttr(safeEncodeURI(file))}">`;
+		return `<img src="${escapeAttr(uri)}" class="chat-bare-img"${width} loading="lazy" data-action="preview-media" data-type="img" data-uri="${escapeAttr(uri)}">`;
 	});
 
 	return result;
@@ -702,30 +630,14 @@ function renderQuoteBar(sender: string, quote: string, avatar?: string): string 
 	}
 
 	// Check for location reference: [位置|label|city|lat|lng]
-	const locMatch = quote.match(LOCATION_RE);
-	if (locMatch) {
-		const label = locMatch[1];
-		const city = locMatch[2] || undefined;
-		let lat: number | undefined;
-		let lng: number | undefined;
-		const c3 = locMatch[3];
-		const c4 = locMatch[4];
-		if (c3 && c4) {
-			lat = parseFloat(c3);
-			lng = parseFloat(c4);
-		} else if (c3 && c3.includes(',')) {
-			const [a, b] = c3.split(',');
-			lng = parseFloat(a);
-			lat = parseFloat(b);
-		}
-		const hasCoords = lat !== undefined && lng !== undefined && !isNaN(lat) && !isNaN(lng);
-		const addr = (city && !label.includes(city)) ? `${city} ${label}` : label;
-		const geoUrl = hasCoords
-			? `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}&zoom=15`
-			: '';
+	const locCard = parseLocationString(quote);
+	if (locCard) {
+		const hasCoords = locCard.lat !== undefined && locCard.lng !== undefined && !isNaN(locCard.lat) && !isNaN(locCard.lng);
+		const addr = formatLocationAddress(locCard.label, locCard.city);
+		const geoUrl = hasCoords ? buildGeoUrl(locCard.lat!, locCard.lng!) : '';
 
 		const preview = hasCoords
-			? `<div class="chat-quote-thumb chat-quote-map-thumb" data-lat="${lat}" data-lng="${lng}" data-action="open-geo" data-geo="${escapeAttr(geoUrl)}"></div>`
+			? `<div class="chat-quote-thumb chat-quote-map-thumb" data-lat="${locCard.lat}" data-lng="${locCard.lng}" data-action="open-geo" data-geo="${escapeAttr(geoUrl)}"></div>`
 			: `<span class="chat-quote-location-marker">📍</span>${escapeHtml(addr)}`;
 
 		return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}</span>${preview}</div>`;
@@ -748,18 +660,15 @@ function renderQuoteBar(sender: string, quote: string, avatar?: string): string 
 	}
 
 	// Check for link card reference: [链接|小程序|标题|cover?|desc?](url)
-	const linkMatch = quote.match(LINK_CARD_RE);
-	if (linkMatch) {
-		const parts = linkMatch[1].split('|');
-		const secondIsUrl = parts.length >= 2 && /^https?:\/\//i.test(parts[1].trim());
-		const title = parts[0];
-		const cover = secondIsUrl ? parts[1].trim() : '';
-		const desc = secondIsUrl ? parts[2]?.trim() || '' : (parts.length >= 2 ? parts[1] : '');
+	const linkCard = parseLinkString(quote);
+	if (linkCard) {
+		const cover = linkCard.cover || '';
+		const desc = linkCard.desc || '';
 		const descHtml = desc ? `<span class="chat-quote-link-desc">${escapeHtml(desc)}</span>` : '';
 		const thumbHtml = cover
 			? `<div class="chat-quote-link-thumb"><img src="${escapeAttr(cover)}" alt="" loading="lazy"></div>`
 			: `<div class="chat-quote-link-thumb chat-quote-link-icon">🔗</div>`;
-		return `<div class="chat-quote-bar chat-quote-link-bar"><span class="chat-quote-sender">${escapeHtml(sender)}:</span><span class="chat-quote-link-body"><span class="chat-quote-link-title">${escapeHtml(title)}</span>${descHtml}</span>${thumbHtml}</div>`;
+		return `<div class="chat-quote-bar chat-quote-link-bar"><span class="chat-quote-sender">${escapeHtml(sender)}:</span><span class="chat-quote-link-body"><span class="chat-quote-link-title">${escapeHtml(linkCard.title)}</span>${descHtml}</span>${thumbHtml}</div>`;
 	}
 
 	const forwardRefTitle = getForwardReferenceTitle(quote);
@@ -786,25 +695,16 @@ function renderQuoteBar(sender: string, quote: string, avatar?: string): string 
 	return `<div class="chat-quote-bar"><span class="chat-quote-sender">${escapeHtml(sender)}</span>${escapeHtml(quote)}</div>`;
 }
 
-function renderMergeForward(part: MergeForward, metaMap: Map<string, FileMeta>, selfNames?: string[]): string {
+function renderMergeForward(part: MergeForward, metaMap: Map<string, FileMeta>, selfNames?: string[], nested = false): string {
 	const uid = 'fw-' + Math.random().toString(36).slice(2, 8);
-	let cardHtml = `<div class="chat-forward-card" data-action="expand-forward" data-id="${uid}">`;
+	const cls = nested ? 'chat-forward-card nested' : 'chat-forward-card';
+	let cardHtml = `<div class="${cls}" data-action="expand-forward" data-id="${uid}">`;
 	cardHtml += `<div class="forward-title">${escapeHtml(part.title)}</div>`;
 	cardHtml += renderForwardPreview(part);
 	cardHtml += '<div class="forward-expand">聊天记录</div>';
 	cardHtml += '</div>';
-	cardHtml += renderForwardTemplate(part, metaMap, selfNames, uid);
+	cardHtml += renderForwardTemplate(part, nested ? new Map() : metaMap, selfNames, uid);
 	return cardHtml;
-}
-
-function renderNestedForwardCard(mf: MergeForward, uid: string, selfNames?: string[]): string {
-	let html = `<div class="chat-forward-card nested" data-action="expand-forward" data-id="${uid}">`;
-	html += `<div class="forward-title">${escapeHtml(mf.title)}</div>`;
-	html += renderForwardPreview(mf);
-	html += '<div class="forward-expand">聊天记录</div>';
-	html += '</div>';
-	html += renderForwardTemplate(mf, new Map(), selfNames, uid);
-	return html;
 }
 
 function renderForwardTemplate(
@@ -824,8 +724,7 @@ function renderForwardTemplate(
 
 		// Nested merge-forward
 		if (typeof item.content !== 'string') {
-			const nestedUID = 'fw-' + Math.random().toString(36).slice(2, 8);
-			html += renderNestedForwardCard(item.content, nestedUID, selfNames);
+			html += renderMergeForward(item.content, new Map(), selfNames, true);
 			html += '</div>';
 			continue;
 		}
@@ -1021,4 +920,14 @@ function hasControlChar(value: string): boolean {
 /** URL-encode path segments, preserving slashes */
 function safeEncodeURI(str: string): string {
 	return encodeURIComponent(str).replace(/%2F/g, '/');
+}
+
+/** Render an <audio> tag used by renderPlainText */
+function renderAudioTag(uri: string): string {
+	return `<audio controls preload="auto" src="${escapeAttr(uri)}" class="chat-bare-audio"></audio>`;
+}
+
+/** Render a <video> tag used by renderPlainText */
+function renderVideoTag(uri: string): string {
+	return `<video controls preload="auto" src="${escapeAttr(uri)}" class="chat-bare-video" data-action="preview-media" data-type="video" data-uri="${escapeAttr(uri)}"></video>`;
 }
