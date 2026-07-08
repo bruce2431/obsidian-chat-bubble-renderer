@@ -16,6 +16,15 @@
 - **Performance** — Chunked base64 encoding, shared vault-name lookup, event-driven auto-render (no polling)
 - **Theme-aware** — Follows Obsidian's dark/light theme automatically
 
+## Latest Release
+
+### 1.3.1
+
+- Reduced duplicate rendering logic for media/PDF overlays, platform badges, and merge-forward media summaries.
+- Hardened file-name decoding so unusual attachment names do not interrupt rendering.
+- Aligned package, manifest, and Obsidian version metadata for release publishing.
+- Updated the build config to resolve entry/output paths from the project root reliably.
+
 ## Usage
 
 Tag your Markdown file with `tags: [聊天记录]`, then switch to **reading view** (`Ctrl+E`). Bubbles render automatically. `Esc` to exit.

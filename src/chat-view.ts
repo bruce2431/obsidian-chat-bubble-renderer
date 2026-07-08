@@ -10,7 +10,7 @@
  * 不在 HTML 中嵌入 onclick — 安全且可维护。
  */
 
-import { parseChatLog, MergeForward, LinkCard, LocationCard, Card, parseLinkString, parseLocationString, parseCardString, formatLocationAddress, buildGeoUrl, LOCATION_RE, CARD_RE, QUOTE_CARD_RE, LINK_CARD_RE } from './chat-parser';
+import { parseChatLog, MergeForward, LinkCard, LocationCard, Card, parseLinkString, parseLocationString, parseCardString, formatLocationAddress, buildGeoUrl, CARD_RE, QUOTE_CARD_RE } from './chat-parser';
 import maplibregl from 'maplibre-gl';
 import { AUDIO_EXTS, VIDEO_EXTS, IMAGE_EXTS, FILE_EXTS, FILE_EXT_RE } from './constants';
 
@@ -101,44 +101,43 @@ export function setupChatBubbleEvents(container: HTMLElement) {
 	}, true);
 }
 
-function openMediaOverlay(type: 'img' | 'video', uri: string) {
+/** Create a full-screen overlay with a centered modal. buildContent receives the modal element. */
+function openOverlay(overlayClass: string, modalClass: string, buildContent: (modal: HTMLElement) => void) {
 	const overlay = activeDocument.createElement('div');
-	overlay.className = 'chat-media-overlay';
+	overlay.className = overlayClass;
 	overlay.addEventListener('click', (ev) => { if (ev.target === overlay) overlay.remove(); });
-
 	const modal = activeDocument.createElement('div');
-	modal.className = 'chat-media-modal';
-
-	if (type === 'img') {
-		const img = activeDocument.createElement('img');
-		img.src = uri;
-		img.className = 'chat-media-full';
-		modal.appendChild(img);
-	} else {
-		const video = activeDocument.createElement('video');
-		video.src = uri;
-		video.controls = true;
-		video.className = 'chat-media-full';
-		void video.play();
-		modal.appendChild(video);
-	}
+	modal.className = modalClass;
+	buildContent(modal);
 	overlay.appendChild(modal);
 	activeDocument.body.appendChild(overlay);
 }
 
-function openPdfOverlay(uri: string) {
-	const overlay = activeDocument.createElement('div');
-	overlay.className = 'chat-file-overlay';
-	overlay.addEventListener('click', (ev) => { if (ev.target === overlay) overlay.remove(); });
+function openMediaOverlay(type: 'img' | 'video', uri: string) {
+	openOverlay('chat-media-overlay', 'chat-media-modal', (modal) => {
+		if (type === 'img') {
+			const img = activeDocument.createElement('img');
+			img.src = uri;
+			img.className = 'chat-media-full';
+			modal.appendChild(img);
+		} else {
+			const video = activeDocument.createElement('video');
+			video.src = uri;
+			video.controls = true;
+			video.className = 'chat-media-full';
+			void video.play();
+			modal.appendChild(video);
+		}
+	});
+}
 
-	const modal = activeDocument.createElement('div');
-	modal.className = 'chat-file-modal';
-	const iframe = activeDocument.createElement('iframe');
-	iframe.src = uri;
-	iframe.className = 'chat-pdf-iframe';
-	modal.appendChild(iframe);
-	overlay.appendChild(modal);
-	activeDocument.body.appendChild(overlay);
+function openPdfOverlay(uri: string) {
+	openOverlay('chat-file-overlay', 'chat-file-modal', (modal) => {
+		const iframe = activeDocument.createElement('iframe');
+		iframe.src = uri;
+		iframe.className = 'chat-pdf-iframe';
+		modal.appendChild(iframe);
+	});
 }
 
 /** Navigation stack for nested merge-forward overlays */
@@ -455,26 +454,28 @@ function renderLinkCard(link: LinkCard, isSelf: boolean): string {
 	</a>`;
 }
 
+const DOMAIN_BADGES: Array<{ test: (d: string) => boolean; css: string; label: string; textIcon?: string }> = [
+	{ test: d => d.includes('bilibili.com') || d.includes('b23.tv'), css: 'chat-badge-bilibili', label: '哔哩哔哩' },
+	{ test: d => d.includes('music.163.com'), css: 'chat-badge-netease', label: '网易云音乐' },
+	{ test: d => d.includes('xiaohongshu.com') || d.includes('xhslink.com'), css: 'chat-badge-xiaohongshu', label: '小红书' },
+	{ test: d => d.includes('mp.weixin.qq.com'), css: 'chat-badge-wechat', label: '小程序' },
+	{ test: d => d.includes('weixin.qq.com'), css: 'chat-badge-wechat', label: '微信' },
+	{ test: d => d.includes('q.qq.com') || d.includes('kandian.qq.com'), css: 'chat-badge-qq', label: 'QQ看点' },
+	{ test: d => d.includes('qq.com'), css: 'chat-badge-qq', label: 'QQ' },
+	{ test: d => d.includes('lofter.com'), css: 'chat-badge-lofter', label: 'LOFTER', textIcon: 'L' },
+	{ test: d => d.includes('meeting.tencent.com'), css: 'chat-badge-tencent-meeting', label: '腾讯会议' },
+];
+
 function domainBadge(domain: string): string {
 	const d = domain.toLowerCase();
-	if (d.includes('bilibili.com') || d.includes('b23.tv'))
-		return `<span class="chat-badge-icon chat-badge-bilibili"></span><span class="chat-badge-label">哔哩哔哩</span>`;
-	if (d.includes('music.163.com'))
-		return `<span class="chat-badge-icon chat-badge-netease"></span><span class="chat-badge-label">网易云音乐</span>`;
-	if (d.includes('xiaohongshu.com') || d.includes('xhslink.com'))
-		return `<span class="chat-badge-icon chat-badge-xiaohongshu"></span><span class="chat-badge-label">小红书</span>`;
-	if (d.includes('weixin.qq.com'))
-		return `<span class="chat-badge-icon chat-badge-wechat"></span><span class="chat-badge-label">微信</span>`;
-	if (d.includes('mp.weixin.qq.com'))
-		return `<span class="chat-badge-icon chat-badge-wechat"></span><span class="chat-badge-label">小程序</span>`;
-	if (d.includes('q.qq.com') || d.includes('kandian.qq.com'))
-		return `<span class="chat-badge-icon chat-badge-qq"></span><span class="chat-badge-label">QQ看点</span>`;
-	if (d.includes('qq.com'))
-		return `<span class="chat-badge-icon chat-badge-qq"></span><span class="chat-badge-label">QQ</span>`;
-	if (d.includes('lofter.com'))
-		return `<span class="chat-badge-text chat-badge-lofter">L</span><span class="chat-badge-label">LOFTER</span>`;
-	if (d.includes('meeting.tencent.com'))
-		return `<span class="chat-badge-icon chat-badge-tencent-meeting"></span><span class="chat-badge-label">腾讯会议</span>`;
+	for (const b of DOMAIN_BADGES) {
+		if (b.test(d)) {
+			const icon = b.textIcon
+				? `<span class="chat-badge-text ${b.css}">${b.textIcon}</span>`
+				: `<span class="chat-badge-icon ${b.css}"></span>`;
+			return `${icon}<span class="chat-badge-label">${b.label}</span>`;
+		}
+	}
 	return `<span class="chat-badge-icon chat-badge-default"></span><span class="chat-badge-domain">${escapeHtml(domain)}</span>`;
 }
 
@@ -703,7 +704,7 @@ function renderMergeForward(part: MergeForward, metaMap: Map<string, FileMeta>, 
 	cardHtml += renderForwardPreview(part);
 	cardHtml += '<div class="forward-expand">聊天记录</div>';
 	cardHtml += '</div>';
-	cardHtml += renderForwardTemplate(part, nested ? new Map() : metaMap, selfNames, uid);
+	cardHtml += renderForwardTemplate(part, nested ? new Map<string, FileMeta>() : metaMap, selfNames, uid);
 	return cardHtml;
 }
 
@@ -724,7 +725,7 @@ function renderForwardTemplate(
 
 		// Nested merge-forward
 		if (typeof item.content !== 'string') {
-			html += renderMergeForward(item.content, new Map(), selfNames, true);
+			html += renderMergeForward(item.content, new Map<string, FileMeta>(), selfNames, true);
 			html += '</div>';
 			continue;
 		}
@@ -798,6 +799,20 @@ function renderForwardPreview(part: MergeForward): string {
 		+ '</div>';
 }
 
+/** Classify a wikilink filename (may be RESOLVED:data:*, RESOLVED:app://, or plain) into a media type */
+function getMediaType(filename: string): 'audio' | 'video' | 'image' | 'file' | null {
+	if (/^RESOLVED:data:audio\//i.test(filename)) return 'audio';
+	if (/^RESOLVED:data:video\//i.test(filename)) return 'video';
+	if (/^RESOLVED:data:image\//i.test(filename)) return 'image';
+	const clean = filename.replace(/^RESOLVED:/, '').split('?')[0];
+	const ext = clean.includes('.') ? clean.split('.').pop()?.toLowerCase() || '' : '';
+	if (IMAGE_EXTS.includes(ext)) return 'image';
+	if (VIDEO_EXTS.includes(ext)) return 'video';
+	if (AUDIO_EXTS.includes(ext)) return 'audio';
+	if (FILE_EXTS.includes(ext)) return 'file';
+	return null;
+}
+
 function summarizeForwardContent(content: string | MergeForward): string {
 	if (typeof content !== 'string') return '[聊天记录]';
 	const text = content.trim().replace(/\s+/g, ' ');
@@ -815,26 +830,15 @@ function summarizeForwardContent(content: string | MergeForward): string {
 
 	if (/!\[\[.+?\]\]/.test(text)) {
 		const title = text.match(/!\[\[(.+?)\]\]/)?.[1] || '';
-		// RESOLVED:data:audio/..., data:video/..., data:image/...
-		if (/^RESOLVED:data:audio\//i.test(title)) return '[语音]';
-		if (/^RESOLVED:data:video\//i.test(title)) return '[视频]';
-		if (/^RESOLVED:data:image\//i.test(title)) return '[图片]';
-		// RESOLVED:app://... — check extension in path
-		if (/^RESOLVED:app:\/\//i.test(title)) {
+		const mt = getMediaType(title);
+		if (mt === 'audio') return '[语音]';
+		if (mt === 'video') return '[视频]';
+		if (mt === 'image') return '[图片]';
+		if (mt === 'file') {
 			const path = title.replace(/^RESOLVED:/, '').split('?')[0];
-			const ext = path.split('.').pop()?.toLowerCase() || '';
-			if (ext && IMAGE_EXTS.includes(ext)) return '[图片]';
-			if (ext && VIDEO_EXTS.includes(ext)) return '[视频]';
-			if (ext && AUDIO_EXTS.includes(ext)) return '[语音]';
-			if (ext && FILE_EXTS.includes(ext)) return `[文件] ${decodeURIComponent(path.split('/').pop()?.split('?')[0] || path)}`;
-			return '[文件]';
+			const name = safeDecodeURI(path.split('/').pop() || path);
+			return `[文件] ${name}`;
 		}
-		// Plain wikilink (not yet RESOLVED)
-		const ext = title.includes('.') ? title.split('.').pop()?.toLowerCase() : '';
-		if (ext && IMAGE_EXTS.includes(ext)) return '[图片]';
-		if (ext && VIDEO_EXTS.includes(ext)) return '[视频]';
-		if (ext && AUDIO_EXTS.includes(ext)) return '[语音]';
-		if (ext && FILE_EXTS.includes(ext)) return `[文件] ${title}`;
 		return title ? `[聊天记录]${title}` : '[聊天记录]';
 	}
 
@@ -856,7 +860,7 @@ function resolveFileLink(filename: string): { displayName: string; uri: string; 
 	let displayName: string;
 	if (filename.startsWith('RESOLVED:')) {
 		uri = filename.slice(9);
-		displayName = decodeURIComponent(uri.split('?')[0].split('/').pop() || uri);
+		displayName = safeDecodeURI(uri.split('?')[0].split('/').pop() || uri);
 	} else {
 		displayName = filename;
 		uri = filename;
